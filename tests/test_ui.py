@@ -17,7 +17,7 @@ class TestMainWindow:
         return w
 
     def test_window_title(self, window):
-        assert window.windowTitle() == "MOS Tools"
+        assert window.windowTitle() == "AudioQAS"
 
     def test_window_size(self, window):
         assert window.minimumWidth() >= 800
