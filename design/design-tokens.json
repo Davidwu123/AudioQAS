@@ -1,0 +1,105 @@
+{
+  "$schema": "https://design-tokens.github.io/community/",
+  "metadata": {
+    "name": "AudioQAS Design System",
+    "version": "1.0.0",
+    "description": "Audio quality measurement macOS app - dark glassmorphism theme",
+    "platform": "macOS (PySide6)"
+  },
+  "color": {
+    "base": {
+      "background": { "$value": "#0D1117", "$description": "Primary dark background, deep space black" },
+      "surface": { "$value": "#161B22", "$description": "Card/panel surface" },
+      "elevated": { "$value": "#1C2333", "$description": "Popovers, tooltips" },
+      "overlay": { "$value": "#21262D", "$description": "Modal overlay backdrop" }
+    },
+    "glass": {
+      "tint": { "$value": "rgba(22, 27, 34, 0.65)", "$description": "Glass panel bg with 65% opacity" },
+      "border": { "$value": "rgba(48, 54, 61, 0.60)", "$description": "Glass border highlight" },
+      "highlight": { "$value": "rgba(139, 148, 158, 0.15)", "$description": "Top-edge light reflection" }
+    },
+    "text": {
+      "primary": { "$value": "#E6EDF3", "$description": "Main text" },
+      "secondary": { "$value": "#8B949E", "$description": "Secondary, metadata" },
+      "tertiary": { "$value": "#6E7681", "$description": "Muted, placeholder" },
+      "inverse": { "$value": "#0D1117", "$description": "On accent backgrounds" }
+    },
+    "accent": {
+      "primary": { "$value": "#58A6FF", "$description": "Electric blue - primary interactive" },
+      "secondary": { "$value": "#BC8CF2", "$description": "Soft violet - audio visualization" },
+      "tertiary": { "$value": "#3FB950", "$description": "Vivid green - success" }
+    },
+    "score": {
+      "bad": { "$value": "#F85149", "$description": "1-2: Bad" },
+      "poor": { "$value": "#D29922", "$description": "2-3: Poor" },
+      "fair": { "$value": "#E3B341", "$description": "3-4: Fair" },
+      "good": { "$value": "#3FB950", "$description": "4-4.5: Good" },
+      "excellent": { "$value": "#2EA043", "$description": "4.5-5: Excellent" }
+    },
+    "interactive": {
+      "hover": { "$value": "#1F6FEB" },
+      "active": { "$value": "#388BFD" },
+      "focus": { "$value": "#58A6FF" },
+      "disabled": { "$value": "#484F58" }
+    },
+    "border": {
+      "default": { "$value": "#30363D" },
+      "muted": { "$value": "#21262D" },
+      "emphasis": { "$value": "#484F58" }
+    }
+  },
+  "typography": {
+    "fontFamily": {
+      "default": { "$value": "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif" },
+      "monospace": { "$value": "'SF Mono', 'Menlo', 'Monaco', monospace" }
+    },
+    "fontSize": {
+      "xs": "11px", "sm": "13px", "md": "15px", "lg": "20px", "xl": "28px", "xxl": "48px"
+    },
+    "fontWeight": {
+      "light": "300", "normal": "400", "medium": "500", "semibold": "600", "bold": "700"
+    }
+  },
+  "spacing": {
+    "xs": "4px", "sm": "8px", "md": "16px", "lg": "24px", "xl": "32px", "xxl": "48px"
+  },
+  "borderRadius": {
+    "sm": "6px", "md": "10px", "lg": "14px", "xl": "20px", "pill": "9999px"
+  },
+  "shadow": {
+    "sm": "0 1px 3px rgba(0,0,0,0.3)",
+    "md": "0 4px 12px rgba(0,0,0,0.4)",
+    "lg": "0 8px 24px rgba(0,0,0,0.5)",
+    "glow": "0 0 20px rgba(88,166,255,0.15)"
+  },
+  "glass": {
+    "blur": "20px",
+    "opacity": "0.65",
+    "saturate": "1.8"
+  },
+  "transition": {
+    "duration": { "fast": "150ms", "normal": "250ms", "slow": "400ms" },
+    "easing": { "default": "cubic-bezier(0.4, 0, 0.2, 1)", "bounce": "cubic-bezier(0.68, -0.55, 0.265, 1.55)" }
+  },
+  "component": {
+    "scoreCard": {
+      "width": "180px", "height": "240px", "padding": "24px",
+      "borderRadius": "14px",
+      "background": "rgba(22, 27, 34, 0.65)",
+      "border": "1px solid rgba(48, 54, 61, 0.6)"
+    },
+    "glassPanel": {
+      "padding": "16px", "borderRadius": "14px",
+      "background": "rgba(22, 27, 34, 0.65)",
+      "border": "1px solid rgba(48, 54, 61, 0.6)"
+    },
+    "sidebar": { "width": "180px" },
+    "toolbar": { "height": "52px" },
+    "progressBar": { "height": "4px", "fillColor": "#58A6FF" },
+    "dropZone": {
+      "borderRadius": "20px",
+      "border": "2px dashed #30363D",
+      "hoverBorder": "2px dashed #58A6FF"
+    }
+  }
+}

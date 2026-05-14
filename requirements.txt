@@ -1,0 +1,14 @@
+PySide6>=6.6
+speechmos>=0.0.1
+onnxruntime>=1.17
+nisqa>=2.0.post2
+torch>=2.2
+torchaudio>=2.2
+soundfile>=0.12
+pydub>=0.25
+ffmpeg-python>=0.2
+numpy>=1.24
+setuptools<71
+audiobox_aesthetics>=0.0.4
+pyloudnorm>=0.2.0
+scipy>=1.10
