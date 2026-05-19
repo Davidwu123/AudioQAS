@@ -8,3 +8,6 @@ __pycache__/
 build/
 dist/
 .claude/
+.worktrees/
+node_modules/
+.tmp

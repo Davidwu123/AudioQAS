@@ -2,9 +2,9 @@
   "$schema": "https://design-tokens.github.io/community/",
   "metadata": {
     "name": "AudioQAS Design System",
-    "version": "1.0.0",
-    "description": "Audio quality measurement macOS app - dark glassmorphism theme",
-    "platform": "macOS (PySide6)"
+    "version": "1.1.0",
+    "description": "AudioQAS web preview design system for professional audio analysis workspace",
+    "platform": "PC Browser"
   },
   "color": {
     "base": {

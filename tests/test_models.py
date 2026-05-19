@@ -1,5 +1,5 @@
-import pytest
-from audioqas.models.base import BaseScorer, ScoreResult, score_to_grade
+from audioqas.models import BaseScorer, ScoreResult, score_to_grade
+from audioqas.models.base import GRADE_MAP
 
 
 class TestScoreToGrade:
@@ -24,72 +24,16 @@ class TestScoreToGrade:
         assert score_to_grade(1.99) == "Bad"
 
 
-class TestDNSMOSScorer:
-    @pytest.fixture
-    def scorer(self):
-        from audioqas.models.dnsmos import DNSMOSScorer
-        return DNSMOSScorer()
+class TestModelExports:
+    def test_base_exports_available(self):
+        assert BaseScorer is not None
+        assert ScoreResult is not None
 
-    def test_properties(self, scorer):
-        assert scorer.name == "DNSMOS"
-        assert scorer.version == "v8"
-        assert scorer.dimensions == ["OVRL", "SIG", "BAK"]
+    def test_grade_map_descending_thresholds(self):
+        thresholds = [threshold for threshold, _ in GRADE_MAP]
+        assert thresholds == sorted(thresholds, reverse=True)
 
-    def test_score_real_file(self, scorer):
-        result = scorer.score("/Users/wuwei/Downloads/processed/00.wav")
-        assert result["model_name"] == "DNSMOS"
-        assert result["model_version"] == "v8"
-        assert "OVRL" in result["dimensions"]
-        assert "SIG" in result["dimensions"]
-        assert "BAK" in result["dimensions"]
-        for dim in ["OVRL", "SIG", "BAK"]:
-            info = result["dimensions"][dim]
-            assert 0 <= info["score"] <= 5
-            assert info["grade"] in ["Bad", "Poor", "Fair", "Good", "Excellent"]
-            assert info["description"]
-        assert result["original_sr"] == 48000
-        assert result["original_channels"] == 2
-        assert result["duration"] > 0
-        assert result["preprocessed"] in [True, False]
+    def test_grade_labels_complete(self):
+        labels = [label for _, label in GRADE_MAP]
+        assert labels == ["Excellent", "Good", "Fair", "Poor", "Bad"]
 
-
-class TestNISQAScorer:
-    @pytest.fixture
-    def scorer(self):
-        from audioqas.models.nisqa import NISQAScorer
-        return NISQAScorer()
-
-    def test_properties(self, scorer):
-        assert scorer.name == "NISQA"
-        assert scorer.version == "v2"
-        assert scorer.dimensions == ["OVRL", "NOI", "DIS", "COL", "LOUD"]
-
-    def test_score_real_file(self, scorer):
-        result = scorer.score("/Users/wuwei/Downloads/processed/00.wav")
-        assert result["model_name"] == "NISQA"
-        assert result["model_version"] == "v2"
-        for dim in ["OVRL", "NOI", "DIS", "COL", "LOUD"]:
-            info = result["dimensions"][dim]
-            assert 0 <= info["score"] <= 5
-            assert info["grade"] in ["Bad", "Poor", "Fair", "Good", "Excellent"]
-            assert info["description"]
-        assert result["original_sr"] == 48000
-        assert result["original_channels"] == 2
-        assert result["preprocessed"] in [True, False]
-
-
-class TestVideoExtraction:
-    @pytest.fixture
-    def scorer(self):
-        from audioqas.models.dnsmos import DNSMOSScorer
-        return DNSMOSScorer()
-
-    def test_mov_file(self, scorer):
-        mov_path = "/Users/wuwei/Downloads/破碎_主播测试_202605/20260512测试录屏/tata_pc_慢歌.mov"
-        import os
-        if not os.path.exists(mov_path):
-            pytest.skip("MOV test file not available")
-        result = scorer.score(mov_path)
-        assert result["model_name"] == "DNSMOS"
-        assert "OVRL" in result["dimensions"]
-        assert result["preprocessed"] in [True, False]

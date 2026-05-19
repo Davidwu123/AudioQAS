@@ -1,0 +1,174 @@
+# TODO
+
+更新时间：2026-05-19
+
+## 当前已完成
+
+- [x] 网页端一级结构固定为：
+  - `纯人声评测`
+  - `综合音频分析`
+  - `历史`
+  - `设置`
+- [x] `design/web-preview.html` 已拆分为三层：
+  - `design/web-preview.html`
+  - `design/web-preview-data.js`
+  - `design/web-preview-app.js`
+- [x] `详细数据` 已拆成三种视图：
+  - `模型维度`
+  - `信号分析`
+  - `完整表格`
+- [x] `DNSMOS` 与 `NISQA` 已拥有独立对比数据，不再复用一套 compare 示例
+- [x] `基准对比` 已从假切换改为真实联动
+- [x] `预处理追溯` 开关已修正为只隐藏 trace，不再误伤历史摘要
+- [x] `pytest` 已可通过项目内 `.venv` 跑通
+- [x] 当前测试可通过：
+  - `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q`
+  - `npm run test:web-preview`
+- [x] 主文档已切换到网页端预览主线，旧桌面 App 叙事已从主文档中移除
+
+## 当前高优先级
+
+- [ ] 开始基于 `web-preview` 落真实现，按阶段推进并持续同步 `todo.md`
+- [x] 第一阶段已完成：抽出可扩展的 Web 骨架层
+  - `audioqas/web/schemas.py`
+  - `audioqas/web/registry.py`
+  - `audioqas/web/services.py`
+  - `tests/test_web_service.py`
+- [x] 第二阶段已完成：增加最小可用 Web API 入口
+  - `audioqas/web/api.py`
+  - 提供：
+    - `/`
+    - `/api/health`
+    - `/api/bootstrap`
+    - `/api/navigation`
+    - `/api/models`
+    - `/api/signal-metrics`
+  - 本机模式：
+    - `audioqas/web/run_local.py`
+    - 固定启动 `127.0.0.1:8000`
+  - 测试：
+    - `tests/test_web_api.py`
+- [x] 第三阶段第一步已完成：抽出现有模型与信号分析的 service 编排层骨架
+  - `audioqas/web/runtime.py`
+  - `audioqas/web/tasks.py`
+  - `tests/test_web_tasks.py`
+- [x] 第三阶段第二步已完成：让 Web API 接入 task service
+  - 新增真实评测入口：
+    - `POST /api/evaluate/single`
+  - 测试：
+    - `tests/test_web_api.py`
+- [x] 第三阶段第三步已完成：增加多文件 / 对比任务 service 与 API
+  - 新增接口：
+    - `POST /api/evaluate/batch`
+    - `POST /api/evaluate/compare`
+  - 扩展：
+    - `BatchTaskResult`
+    - `CompareTaskResult`
+    - `CompareInputGroup`
+  - 测试：
+    - `tests/test_web_api.py`
+    - `tests/test_web_tasks.py`
+- [x] 第四阶段：接入最小可用网页端页面
+  - [x] 前端已开始接本机 API：单文件上传评测
+  - [x] 单文件页已基本收口：
+    - 真实文件摘要
+    - 真实模型结果
+    - 真实信号分析
+    - 独立处理建议
+    - 详细预处理追溯
+    - 单文件详细数据表
+  - [x] 顶层非对比主入口已明确收敛为 `单文件测评`，前端不再暴露多文件上传入口
+  - [x] 前端已开始接本机 API：对比上传评测
+  - [x] 对比页已基本收口：
+    - 运行时推荐结论与排序已开始真实化
+    - 运行时详细追溯已接入详细链路
+    - 运行时表格映射已接入数据层
+    - NISQA 维度完整性已对齐
+  - [x] 历史页真实状态链路已接入：
+    - 历史列表 API
+    - 上传后真实写入
+    - 前端真实列表渲染
+    - 切到历史页自动刷新
+  - [x] 设置页真实状态链路已接入：
+    - `/api/settings`
+    - 默认模型显示随当前状态同步
+    - 预处理追溯与默认对比模式真实持久化
+    - reload 后状态恢复
+  - [x] 文档与验收已对齐：
+    - `README.md`
+    - `docs/web-product-spec.md`
+    - `docs/web-acceptance-checklist.md`
+  - 严格以 `web-preview` 为准，不单独扩出新的“批量结果页”产品流
+- [ ] 继续完善 `web-preview` 的业务数据覆盖范围：
+  - 补更多历史任务类型
+  - 补更多设置项状态组合
+  - 补更多 compare 边界场景
+- [ ] 把网页端预览当前规则继续沉淀为更稳定的数据契约：
+  - 页面状态
+  - 模型说明结构
+  - 详细数据列定义
+  - 历史摘要结构
+- [ ] 评估是否需要把 `docs/web-product-spec.md` 拆成更短的产品需求 / 交互规则两份文档
+
+## 桌面实现后续处理
+
+- [ ] 评估是否继续保留 `audioqas/` 下现有 PySide6 桌面实现代码
+- [ ] 如果确认不再保留桌面实现，后续删除以下遗留目录与文件：
+  - `audioqas/app.py`
+  - `audioqas/ui/*`
+  - `audioqas/core/history.py`
+  - `tests/test_ui.py`
+  - `requirements.txt` 中桌面/UI 相关依赖
+- [ ] 如果确认删除桌面实现，同步清理以下文档/叙事残留：
+  - `README.md` 中桌面遗留说明
+  - `design/DESIGN.md` 中历史实现背景说明
+  - 任何仍引用桌面端入口的开发说明
+- [ ] 如果暂时保留桌面实现，则至少把它降级为“历史实现”，不要再继续主导需求和设计文档
+- [x] 已删除 `design/design-preview.html`，避免旧桌面预览语义继续干扰当前网页端主线
+
+## 测试与环境
+
+- [~] 增加更多网页端展示测试：
+  - [x] 设置页状态映射关键联动
+  - [x] compare 边界组别切换与基准重算
+  - [x] 历史页空状态 / 错误状态基础覆盖
+  - [x] 历史页摘要结构更细粒度断言
+  - [x] DOM 级 user-flow 第一阶段覆盖：
+    - 单文件结果渲染
+    - 对比结果渲染
+    - 历史 success / empty / error
+    - 设置 trace / 默认对比模式联动
+    - 单文件失败提示
+    - 单文件阶段性伪进度
+  - [x] 真实文件集成回归第一阶段：
+    - `tests/files/test1.wav`
+    - `tests/files/test2.wav`
+    - 真实上传 API 契约测试
+    - 真实页面对齐测试（speech / analysis / compare）
+  - [x] 真实状态链路第二阶段：
+    - history 真实写入与真实页面回放
+    - settings 真实持久化与 reload 后联动
+- [ ] 评估是否增加 `pytest.ini`，统一处理当前 warning
+- [ ] 如后续引入真实 Web 实现，补充：
+  - 数据层测试
+  - DOM/交互测试
+  - API 契约测试
+
+## 文档维护
+
+- [x] 本轮已完成以下文件对齐：
+  - `README.md`
+  - `docs/web-product-spec.md`
+  - `docs/web-acceptance-checklist.md`
+  - `design/DESIGN.md`
+- [ ] 保持以下文件持续对齐：
+  - `README.md`
+  - `AGENTS.md`
+  - `docs/web-product-spec.md`
+  - `docs/web-acceptance-checklist.md`
+  - `design/DESIGN.md`
+- [ ] 后续任何网页端结构调整，都需要同步更新：
+  - `design/web-preview.html`
+  - `design/web-preview-data.js`
+  - `design/web-preview-app.js`
+  - 对应测试

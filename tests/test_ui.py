@@ -2,10 +2,17 @@ import pytest
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
 import sys
+from unittest.mock import patch
 
 app = QApplication.instance()
 if app is None:
     app = QApplication(sys.argv)
+
+
+@pytest.fixture(autouse=True)
+def process_qt_events():
+    yield
+    app.processEvents()
 
 
 class TestMainWindow:
@@ -14,7 +21,9 @@ class TestMainWindow:
         from audioqas.ui.main_window import MainWindow
         w = MainWindow()
         w.show()
-        return w
+        yield w
+        w.close()
+        w.deleteLater()
 
     def test_window_title(self, window):
         assert window.windowTitle() == "AudioQAS"
@@ -63,7 +72,9 @@ class TestComparisonMode:
         from audioqas.ui.main_window import MainWindow
         w = MainWindow()
         w.show()
-        return w
+        yield w
+        w.close()
+        w.deleteLater()
 
     def test_enter_comparison_mode(self, window):
         ep = window._eval_page
@@ -98,22 +109,28 @@ class TestCompareDropZone:
     def zone_a(self):
         from audioqas.ui.compare_drop_zone import CompareDropZoneWidget
         z = CompareDropZoneWidget("A")
-        return z
+        yield z
+        z.close()
+        z.deleteLater()
 
     @pytest.fixture
     def zone_b(self):
         from audioqas.ui.compare_drop_zone import CompareDropZoneWidget
         z = CompareDropZoneWidget("B")
-        return z
+        yield z
+        z.close()
+        z.deleteLater()
 
     def test_side_label(self, zone_a, zone_b):
         assert zone_a._side == "A"
         assert zone_b._side == "B"
 
-    def test_set_file(self, zone_a):
-        zone_a.set_file("/Users/wuwei/Downloads/processed/00.wav")
-        assert zone_a._file_path == "/Users/wuwei/Downloads/processed/00.wav"
-        assert "00.wav" in zone_a._file_label.text()
+    def test_set_file(self, zone_a, tmp_path):
+        sample = tmp_path / "sample.wav"
+        sample.write_bytes(b"fake")
+        zone_a.set_file(str(sample))
+        assert zone_a._file_path == str(sample)
+        assert "sample.wav" in zone_a._file_label.text()
 
     def test_accept_drops(self, zone_a):
         assert zone_a.acceptDrops()
@@ -140,13 +157,32 @@ class TestDeltaWidget:
 
 
 class TestComparisonWidget:
-    def test_creation(self):
-        from audioqas.models.dnsmos import DNSMOSScorer
-        from audioqas.ui.comparison import ComparisonWidget
+    @staticmethod
+    def _fake_result(path: str, model_name: str = "DNSMOS"):
+        return {
+            "eval_type": "mos",
+            "model_name": model_name,
+            "model_version": "test",
+            "dimensions": {
+                "OVRL": {"score": 3.2, "grade": "Fair", "description": "ok"},
+                "SIG": {"score": 3.8, "grade": "Good", "description": "ok"},
+                "BAK": {"score": 2.9, "grade": "Poor", "description": "ok"},
+            },
+            "grade": "Fair",
+            "descriptions": {"OVRL": "ok", "SIG": "ok", "BAK": "ok"},
+            "timestamp": "2026-05-18T00:00:00",
+            "file_path": path,
+            "original_sr": 16000,
+            "original_channels": 1,
+            "duration": 1.0,
+            "preprocessed": False,
+            "preprocessed_path": path,
+        }
 
-        scorer = DNSMOSScorer()
-        ra = scorer.score("/Users/wuwei/Downloads/processed/00.wav")
-        rb = scorer.score("/Users/wuwei/Downloads/processed/01.wav")
+    def test_creation(self):
+        from audioqas.ui.comparison import ComparisonWidget
+        ra = self._fake_result("a.wav")
+        rb = self._fake_result("b.wav")
 
         cw = ComparisonWidget(ra, rb)
         assert cw._result_a is not None
@@ -154,11 +190,8 @@ class TestComparisonWidget:
 
     def test_verdict_text(self):
         from audioqas.ui.comparison import ComparisonWidget
-        from audioqas.models.dnsmos import DNSMOSScorer
-
-        scorer = DNSMOSScorer()
-        ra = scorer.score("/Users/wuwei/Downloads/processed/00.wav")
-        rb = scorer.score("/Users/wuwei/Downloads/processed/01.wav")
+        ra = self._fake_result("a.wav")
+        rb = self._fake_result("b.wav")
 
         cw = ComparisonWidget(ra, rb)
         # verdict_label should show some text
@@ -171,7 +204,9 @@ class TestModelSwitch:
         from audioqas.ui.main_window import MainWindow
         w = MainWindow()
         w.show()
-        return w
+        yield w
+        w.close()
+        w.deleteLater()
 
     def test_switch_to_nisqa(self, window):
         window._on_model_change("nisqa")
@@ -179,6 +214,8 @@ class TestModelSwitch:
 
     def test_switch_to_unregistered_shows_dialog(self, window):
         # UTMOS not registered -> should show info dialog
-        window._on_model_change("utmos")
+        with patch("audioqas.ui.main_window.QMessageBox.information") as info:
+            window._on_model_change("utmos")
+        info.assert_called_once()
         # Active model should stay as DNSMOS (the first registered)
         assert window._scoring_mgr._active_model in window._scoring_mgr.available_models()

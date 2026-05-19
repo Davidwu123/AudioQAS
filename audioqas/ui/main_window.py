@@ -18,6 +18,7 @@ from audioqas.models.nisqa import NISQAScorer
 from audioqas.models.audiobox_aesthetics import AudioBoxAestheticsScorer
 from audioqas.models.analysis import AudioAnalyzer
 from audioqas.ui.analysis_page import AnalysisPageWidget
+from audioqas.ui.page_intro import PageIntroWidget
 from audioqas.core.scorer import ScoringManager
 from audioqas.core.history import HistoryManager
 from audioqas.core.dimensions import DimensionRegistry
@@ -101,9 +102,22 @@ class EvalPageWidget(QWidget):
         content = QWidget()
         self._content_layout = QVBoxLayout(content)
         self._content_layout.setContentsMargins(24, 24, 24, 24)
+        self._content_layout.setSpacing(16)
+
+        self._intro = PageIntroWidget(
+            "纯人声评测",
+            "适用于通话、口播、会议、纯人声录音，支持人声质量评测与信号分析。",
+        )
+        self._content_layout.addWidget(self._intro)
 
         # Single-file mode: one drop zone
         self._drop_zone = DropZoneWidget()
+        self._drop_zone.set_texts(
+            "拖拽纯人声音频到此处",
+            "适用于通话、口播、会议、纯人声录音",
+            "WAV / FLAC / MP3 / AAC / OGG / M4A",
+            "MP4 / MKV / AVI / MOV (如为纯人声视频可自动提取音轨)",
+        )
         self._drop_zone.files_dropped.connect(main_window._on_files)
         self._drop_zone.dir_selected.connect(main_window._on_dir)
         self._content_layout.addWidget(self._drop_zone)
@@ -271,7 +285,7 @@ class MainWindow(QMainWindow):
     def _on_aes_progress(self, done, total, result):
         ap = self._analysis_page
         name = os.path.basename(result['file_path'])
-        ap.progress_label().setText(f"分析中 · AudioBox · {done}/{total} · {name}")
+        ap.progress_label().setText(f"分析中 · AudioBox Aesthetics · {done}/{total} · {name}")
 
     def _on_aes_finished(self, results, elapsed_ms):
         if not results:
@@ -280,7 +294,7 @@ class MainWindow(QMainWindow):
         ap = self._analysis_page
         ap.progress_label().setText(f"AI评分完成 · {elapsed_s:.1f}s · 信号分析进行中...")
         ap.show_aes_result(results[0])
-        self._show_analysis_toast(f"AudioBox 评分完成 · {len(results)} 文件 · {elapsed_s:.1f}s")
+        self._show_analysis_toast(f"AudioBox Aesthetics 评分完成 · {len(results)} 文件 · {elapsed_s:.1f}s")
 
     def _on_analysis_finished(self, result):
         ap = self._analysis_page
@@ -333,7 +347,7 @@ class MainWindow(QMainWindow):
         ap = self._analysis_page
         ap._compare_zone.setVisible(False)
         ap._results_widget.setVisible(True)
-        ap.progress_label().setText(f"对比分析中 · AudioBox · 0/2")
+        ap.progress_label().setText(f"对比分析中 · AudioBox Aesthetics · 0/2")
         self._analysis_worker = AnalysisWorker(self._aes_scorer, self._analyzer, files)
         self._analysis_worker.progress_aes.connect(self._on_aes_cmp_progress)
         self._analysis_worker.finished_aes.connect(self._on_aes_cmp_finished)
@@ -343,7 +357,7 @@ class MainWindow(QMainWindow):
     def _on_aes_cmp_progress(self, done, total, result):
         ap = self._analysis_page
         name = os.path.basename(result['file_path'])
-        ap.progress_label().setText(f"对比分析中 · AudioBox · {done}/{total} · {name}")
+        ap.progress_label().setText(f"对比分析中 · AudioBox Aesthetics · {done}/{total} · {name}")
 
     def _on_aes_cmp_finished(self, results, elapsed_ms):
         if not results or len(results) < 2:

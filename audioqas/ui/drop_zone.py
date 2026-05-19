@@ -12,6 +12,11 @@ class DropZoneWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._hover = False
+        self._title_text = "拖拽音频/视频文件到此处"
+        self._subtitle_text = "或点击选择文件/目录"
+        self._audio_formats_text = "WAV / FLAC / MP3 / AAC / OGG / M4A"
+        self._video_formats_text = "MP4 / MKV / AVI / MOV (自动提取音轨)"
+        self._dir_enabled = True
         self.setAcceptDrops(True)
         self.setMinimumHeight(300)
 
@@ -35,27 +40,27 @@ class DropZoneWidget(QWidget):
         inner_layout.setAlignment(Qt.AlignCenter)
         inner_layout.setSpacing(8)
 
-        title = QLabel("拖拽音频/视频文件到此处")
-        title.setStyleSheet(f"font-size: 20px; font-weight: 600; color: {txt_primary}")
-        title.setAlignment(Qt.AlignCenter)
-        inner_layout.addWidget(title)
+        self._title = QLabel(self._title_text)
+        self._title.setStyleSheet(f"font-size: 20px; font-weight: 600; color: {txt_primary}")
+        self._title.setAlignment(Qt.AlignCenter)
+        inner_layout.addWidget(self._title)
 
-        subtitle = QLabel("或点击选择文件/目录")
-        subtitle.setStyleSheet(f"font-size: 15px; color: {txt_tertiary}")
-        subtitle.setAlignment(Qt.AlignCenter)
-        inner_layout.addWidget(subtitle)
+        self._subtitle = QLabel(self._subtitle_text)
+        self._subtitle.setStyleSheet(f"font-size: 15px; color: {txt_tertiary}")
+        self._subtitle.setAlignment(Qt.AlignCenter)
+        inner_layout.addWidget(self._subtitle)
 
         inner_layout.addSpacing(8)
 
-        fmt_audio = QLabel("WAV / FLAC / MP3 / AAC / OGG / M4A")
-        fmt_audio.setStyleSheet(f"font-size: 13px; color: {txt_tertiary}")
-        fmt_audio.setAlignment(Qt.AlignCenter)
-        inner_layout.addWidget(fmt_audio)
+        self._fmt_audio = QLabel(self._audio_formats_text)
+        self._fmt_audio.setStyleSheet(f"font-size: 13px; color: {txt_tertiary}")
+        self._fmt_audio.setAlignment(Qt.AlignCenter)
+        inner_layout.addWidget(self._fmt_audio)
 
-        fmt_video = QLabel("MP4 / MKV / AVI / MOV (自动提取音轨)")
-        fmt_video.setStyleSheet(f"font-size: 13px; color: {accent_secondary}")
-        fmt_video.setAlignment(Qt.AlignCenter)
-        inner_layout.addWidget(fmt_video)
+        self._fmt_video = QLabel(self._video_formats_text)
+        self._fmt_video.setStyleSheet(f"font-size: 13px; color: {accent_secondary}")
+        self._fmt_video.setAlignment(Qt.AlignCenter)
+        inner_layout.addWidget(self._fmt_video)
 
         inner_layout.addSpacing(24)
 
@@ -69,14 +74,36 @@ class DropZoneWidget(QWidget):
         file_btn.clicked.connect(self._open_file_dialog)
         btn_layout.addWidget(file_btn)
 
-        dir_btn = QPushButton("选择目录")
-        dir_btn.setStyleSheet(f"background: transparent; color: {txt_sec}; border: 1px solid {border_def}; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 500")
-        dir_btn.setCursor(Qt.PointingHandCursor)
-        dir_btn.clicked.connect(self._open_dir_dialog)
-        btn_layout.addWidget(dir_btn)
+        self._dir_btn = QPushButton("选择目录")
+        self._dir_btn.setStyleSheet(f"background: transparent; color: {txt_sec}; border: 1px solid {border_def}; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 500")
+        self._dir_btn.setCursor(Qt.PointingHandCursor)
+        self._dir_btn.clicked.connect(self._open_dir_dialog)
+        btn_layout.addWidget(self._dir_btn)
 
         inner_layout.addLayout(btn_layout)
         layout.addWidget(inner)
+
+    def set_texts(
+        self,
+        title: str,
+        subtitle: str,
+        audio_formats: str | None = None,
+        video_formats: str | None = None,
+    ):
+        self._title_text = title
+        self._subtitle_text = subtitle
+        self._title.setText(title)
+        self._subtitle.setText(subtitle)
+        if audio_formats is not None:
+            self._audio_formats_text = audio_formats
+            self._fmt_audio.setText(audio_formats)
+        if video_formats is not None:
+            self._video_formats_text = video_formats
+            self._fmt_video.setText(video_formats)
+
+    def set_directory_enabled(self, enabled: bool):
+        self._dir_enabled = enabled
+        self._dir_btn.setVisible(enabled)
 
     def _open_file_dialog(self):
         files, _ = QFileDialog.getOpenFileNames(

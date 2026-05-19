@@ -10,7 +10,7 @@ from audioqas.models.base import BaseScorer, ScoreResult, score_to_grade
 from audioqas.core.dimensions import DimensionRegistry
 
 TARGET_SR = 16000
-PREPROCESS_DIR = os.path.expanduser("~/Library/Application Support/AudioQAS/preprocessed")
+DEFAULT_PREPROCESS_DIR = os.path.expanduser("~/Library/Application Support/AudioQAS/preprocessed")
 
 DNSMOS_LABELS = {
     "OVRL": "整体听感",
@@ -82,8 +82,9 @@ def _preprocessed_name(original_path: str, target_sr: int, is_video: bool = Fals
 
 
 def _ensure_preprocess_dir() -> str:
-    os.makedirs(PREPROCESS_DIR, exist_ok=True)
-    return PREPROCESS_DIR
+    preprocess_dir = os.environ.get("AUDIOQAS_PREPROCESS_DIR", DEFAULT_PREPROCESS_DIR)
+    os.makedirs(preprocess_dir, exist_ok=True)
+    return preprocess_dir
 
 
 def _extract_audio(video_path: str) -> str:

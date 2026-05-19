@@ -8,7 +8,7 @@ import soundfile as sf
 from audioqas.models.base import BaseScorer, ScoreResult
 from audioqas.core.dimensions import DimensionRegistry
 
-PREPROCESS_DIR = os.path.expanduser("~/Library/Application Support/AudioQAS/preprocessed")
+DEFAULT_PREPROCESS_DIR = os.path.expanduser("~/Library/Application Support/AudioQAS/preprocessed")
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv"}
 
 AES_GRADE_MAP = [
@@ -97,8 +97,9 @@ def _preprocessed_name(original_path: str, is_video: bool = False) -> str:
 
 
 def _ensure_preprocess_dir() -> str:
-    os.makedirs(PREPROCESS_DIR, exist_ok=True)
-    return PREPROCESS_DIR
+    preprocess_dir = os.environ.get("AUDIOQAS_PREPROCESS_DIR", DEFAULT_PREPROCESS_DIR)
+    os.makedirs(preprocess_dir, exist_ok=True)
+    return preprocess_dir
 
 
 def _extract_audio(video_path: str) -> str:

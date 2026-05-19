@@ -8,6 +8,7 @@ from audioqas.ui.toolbar import EvalToolbarWidget
 from audioqas.ui.drop_zone import DropZoneWidget
 from audioqas.ui.score_card import ScoreCardWidget
 from audioqas.ui.metric_card import MetricCardWidget
+from audioqas.ui.page_intro import PageIntroWidget
 from audioqas.models.analysis import METRIC_LABELS, METRIC_DESCRIPTIONS
 
 
@@ -43,9 +44,23 @@ class AnalysisPageWidget(QWidget):
         content = QWidget()
         self._content_layout = QVBoxLayout(content)
         self._content_layout.setContentsMargins(24, 24, 24, 24)
+        self._content_layout.setSpacing(16)
+
+        self._intro = PageIntroWidget(
+            "综合音频分析",
+            "面向人声+音乐、视频音轨、节目成品与混合内容，结合 AudioBox Aesthetics 与信号分析给出综合判断。",
+        )
+        self._content_layout.addWidget(self._intro)
 
         # Drop zone (single file mode)
         self._drop_zone = DropZoneWidget()
+        self._drop_zone.set_texts(
+            "拖拽综合音频或视频文件到此处",
+            "适用于人声+音乐、视频音轨、节目成品与混合内容，可点击选择文件",
+            "WAV / FLAC / MP3 / AAC / OGG / M4A",
+            "MP4 / MKV / AVI / MOV (自动提取音轨)",
+        )
+        self._drop_zone.set_directory_enabled(False)
         self._drop_zone.files_dropped.connect(self.files_dropped.emit)
         self._content_layout.addWidget(self._drop_zone)
 

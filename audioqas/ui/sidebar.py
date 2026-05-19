@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout, QToolTip
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPainter, QColor, QPen
 
@@ -11,8 +11,27 @@ MODELS = [
 ]
 
 ANALYSIS_MODELS = [
-    {"id": "audiobox-aesthetics", "name": "AudioBox", "tag": "4维·1-10", "version": "AudioBox-Aesthetics v1"},
+    {"id": "audiobox-aesthetics", "name": "AudioBox Aesthetics", "tag": "4维·1-10", "version": "AudioBox-Aesthetics v1"},
 ]
+
+PAGE_DEFS = {
+    "eval": {
+        "label": "纯人声评测",
+        "hint": "适用于通话、口播、会议、纯人声录音",
+    },
+    "analysis": {
+        "label": "综合音频分析",
+        "hint": "适用于人声+音乐、视频音轨、节目成品与混合内容",
+    },
+    "history": {
+        "label": "历史",
+        "hint": "查看历史评测与分析结果",
+    },
+    "settings": {
+        "label": "设置",
+        "hint": "调整模型、预处理和运行配置",
+    },
+}
 
 
 class ModelDotWidget(QWidget):
@@ -142,14 +161,9 @@ class SidebarWidget(QWidget):
         nav_layout = QVBoxLayout()
         nav_layout.setContentsMargins(8, 8, 8, 8)
         nav_layout.setSpacing(0)
-        pages = [
-            ("语音评测", "eval"),
-            ("音频分析", "analysis"),
-            ("历史", "history"),
-            ("设置", "settings"),
-        ]
-        for label, page_id in pages:
-            item = QLabel(label)
+        pages = ["eval", "analysis", "history", "settings"]
+        for page_id in pages:
+            item = QLabel(PAGE_DEFS[page_id]["label"])
             item.setFixedHeight(44)
             item.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
             item.setContentsMargins(16, 0, 16, 0)
@@ -157,6 +171,8 @@ class SidebarWidget(QWidget):
             item.setStyleSheet(f"font-size: 15px; font-weight: 500; color: {txt_sec}; border-radius: 6px;")
             item.setProperty("page_id", page_id)
             item.mousePressEvent = lambda e, pid=page_id: self.page_changed.emit(pid)
+            item.enterEvent = lambda e, w=item, pid=page_id: self._show_nav_hint(w, pid, e)
+            item.leaveEvent = lambda e, w=item, pid=page_id: self._hide_nav_hint(w, pid, e)
             nav_layout.addWidget(item)
             self._nav_items.append(item)
         layout.addLayout(nav_layout)
@@ -179,7 +195,7 @@ class SidebarWidget(QWidget):
         models_inner.setContentsMargins(16, 8, 16, 8)
         models_inner.setSpacing(0)
 
-        models_title = QLabel("语音模型")
+        models_title = QLabel("人声模型")
         models_title.setStyleSheet(f"font-size: 11px; font-weight: 600; color: {txt_ter}; letter-spacing: 1px")
         models_inner.addWidget(models_title)
         models_inner.addSpacing(8)
@@ -210,7 +226,7 @@ class SidebarWidget(QWidget):
         analysis_inner.setContentsMargins(16, 8, 16, 8)
         analysis_inner.setSpacing(0)
 
-        analysis_title = QLabel("音频模型")
+        analysis_title = QLabel("综合音频模型")
         analysis_title.setStyleSheet(f"font-size: 11px; font-weight: 600; color: {txt_ter}; letter-spacing: 1px")
         analysis_inner.addWidget(analysis_title)
         analysis_inner.addSpacing(8)
@@ -273,10 +289,10 @@ class SidebarWidget(QWidget):
         accent = _color(t, "accent", "primary")
         txt_sec = _color(t, "text", "secondary")
         for i, item in enumerate(self._nav_items):
-            if i == index:
-                item.setStyleSheet(f"font-size: 15px; font-weight: 500; color: {accent}; background: rgba(88,166,255,0.15); border-radius: 6px; padding-left: 16px;")
-            else:
-                item.setStyleSheet(f"font-size: 15px; font-weight: 500; color: {txt_sec}; border-radius: 6px; padding-left: 16px;")
+            page_id = item.property("page_id")
+            active = i == index
+            hovered = page_id != self._active_page and item.underMouse()
+            self._apply_nav_item_style(item, active, hovered, accent, txt_sec)
 
     def _on_model_click(self, model_id):
         if model_id == self._current_model_id:
@@ -316,3 +332,33 @@ class SidebarWidget(QWidget):
 
     def current_model(self):
         return self._current_model_id
+
+    def _show_nav_hint(self, widget, page_id, event):
+        t = load_tokens()
+        accent = _color(t, "accent", "primary")
+        txt_sec = _color(t, "text", "secondary")
+        self._apply_nav_item_style(widget, page_id == self._active_page, True, accent, txt_sec)
+        hint = PAGE_DEFS.get(page_id, {}).get("hint", "")
+        if hint:
+            pos = widget.mapToGlobal(widget.rect().topRight())
+            QToolTip.showText(pos, hint, widget)
+
+    def _hide_nav_hint(self, widget, page_id, event):
+        QToolTip.hideText()
+        t = load_tokens()
+        accent = _color(t, "accent", "primary")
+        txt_sec = _color(t, "text", "secondary")
+        self._apply_nav_item_style(widget, page_id == self._active_page, False, accent, txt_sec)
+
+    def _apply_nav_item_style(self, item, active: bool, hovered: bool, accent: str, txt_sec: str):
+        if active:
+            item.setStyleSheet(
+                f"font-size: 15px; font-weight: 500; color: {accent}; "
+                "background: rgba(88,166,255,0.15); border-radius: 6px; padding-left: 16px;"
+            )
+            return
+        bg = "rgba(48,54,61,0.4)" if hovered else "transparent"
+        item.setStyleSheet(
+            f"font-size: 15px; font-weight: 500; color: {txt_sec}; "
+            f"background: {bg}; border-radius: 6px; padding-left: 16px;"
+        )
