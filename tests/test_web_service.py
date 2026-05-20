@@ -22,15 +22,15 @@ def test_speech_domain_supports_multiple_models():
     assert keys == ["dnsmos", "nisqa"]
 
 
-def test_signal_catalog_keeps_expandable_detail_metrics():
+def test_signal_catalog_only_includes_computed_metrics():
     service = WebPreviewService()
     metrics = service.signal_catalog()
     keys = [metric["key"] for metric in metrics]
-    assert "SNR" in keys
-    assert "Stereo" in keys
-    detail_only = {metric["key"]: metric["detail_only"] for metric in metrics}
-    assert detail_only["SNR"] is True
-    assert detail_only["Stereo"] is True
+    assert "LUFS" in keys
+    assert "TruePeak" in keys
+    assert "THD" in keys
+    assert "SNR" not in keys
+    assert "Stereo" not in keys
 
 
 def test_bootstrap_payload_is_api_ready():
@@ -109,3 +109,34 @@ def test_history_store_can_record_new_items():
     assert len(items) == 1
     assert items[0]["id"] == "task-2"
     assert store.get_item("task-2") == item
+
+
+def test_registry_dimensions_match_model_output():
+    """Each ModelOption.dimensions should match the actual scorer's dimensions property."""
+    from audioqas.models.dnsmos import DNSMOSScorer
+    from audioqas.models.nisqa import NISQAScorer
+    from audioqas.models.audiobox_aesthetics import AudioBoxAestheticsScorer
+
+    speech_descriptor = default_registry.model_descriptor(EvalDomain.SPEECH)
+    for option in speech_descriptor.options:
+        if option.key == "dnsmos":
+            assert tuple(option.dimensions) == tuple(DNSMOSScorer().dimensions)
+        elif option.key == "nisqa":
+            assert tuple(option.dimensions) == tuple(NISQAScorer().dimensions)
+
+    mixed_descriptor = default_registry.model_descriptor(EvalDomain.MIXED)
+    for option in mixed_descriptor.options:
+        if option.key == "audiobox":
+            assert tuple(option.dimensions) == tuple(AudioBoxAestheticsScorer().dimensions)
+
+
+def test_bootstrap_logs_service_event(tmp_path):
+    from audioqas.logging import setup_logging
+
+    setup_logging(log_dir=tmp_path / "log", level="DEBUG", max_mb=1, backup_count=2)
+    service = WebPreviewService()
+
+    service.bootstrap_payload()
+
+    text = (tmp_path / "log" / "audioqas.log").read_text(encoding="utf-8")
+    assert "bootstrap_payload_built" in text

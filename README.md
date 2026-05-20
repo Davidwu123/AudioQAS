@@ -38,6 +38,15 @@ npm run test:web-preview
 http://127.0.0.1:8000
 ```
 
+运行产物路径约定：
+
+- 日志固定写入工程根目录 `log/`
+- 预处理中间文件默认写入工程根目录 `.tmp/preprocessed`
+- Web 上传缓存默认写入工程根目录 `.tmp/web_uploads`
+- Web 状态文件默认写入工程根目录 `.tmp/web_state`
+- `log/` 用于排障保留，`.tmp/` 下内容属于运行产物，可按需清理
+- 如需覆盖预处理目录，可设置环境变量 `AUDIOQAS_PREPROCESS_DIR`
+
 当前页面完成度：
 
 - `纯人声评测`

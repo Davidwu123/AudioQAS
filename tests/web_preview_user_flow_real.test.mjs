@@ -341,10 +341,10 @@ test("real speech compare nisqa render keeps full dimensions and base mode recom
     assert.equal(app.text('[data-compare-table="eval"] thead tr').includes("噪声感知"), true);
     assert.equal(app.text('[data-compare-table="eval"] thead tr').includes("连续性"), true);
     await app.click('[data-compare-kind="eval"][data-compare-mode="base"]');
-    await waitFor(app.window, () => app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("相对基准 A 提升最明显"), "real nisqa base summary A");
+    await waitFor(app.window, () => app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("比基准 A"), "real nisqa base summary A");
     assert.equal(app.text('[data-compare-ranking="eval"] .ranking-list').includes("vs A"), true);
     await app.click('[data-base-root="eval"] .base-pill:nth-child(2)');
-    await waitFor(app.window, () => app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("相对基准 B 提升最明显"), "real nisqa base summary B");
+    await waitFor(app.window, () => app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("基准 B"), "real nisqa base summary B");
     assert.equal(app.text('[data-compare-ranking="eval"] .ranking-list').includes("vs B"), true);
   } finally {
     await app.close();
@@ -367,10 +367,10 @@ test("real analysis compare render stays aligned with preview", async () => {
     assert.equal(app.text('[data-compare-ranking="analysis"] .ranking-list').includes("test1.wav") || app.text('[data-compare-ranking="analysis"] .ranking-list').includes("test2.wav"), true);
     assert.equal(app.text('[data-compare-table="analysis"] thead tr').includes("制作质量"), true);
     await app.click('[data-compare-kind="analysis"][data-compare-mode="base"]');
-    await waitFor(app.window, () => app.text('[data-compare-summary="analysis"] .compare-summary-alt').includes("相对基准 A 提升最明显"), "real analysis base summary A");
+    await waitFor(app.window, () => app.text('[data-compare-summary="analysis"] .compare-summary-alt').includes("基准 A"), "real analysis base summary A");
     assert.equal(app.text('[data-compare-ranking="analysis"] .ranking-list').includes("vs A"), true);
     await app.click('[data-base-root="analysis"] .base-pill:nth-child(2)');
-    await waitFor(app.window, () => app.text('[data-compare-summary="analysis"] .compare-summary-alt').includes("相对基准 B 提升最明显"), "real analysis base summary B");
+    await waitFor(app.window, () => app.text('[data-compare-summary="analysis"] .compare-summary-alt').includes("基准 B"), "real analysis base summary B");
     assert.equal(app.text('[data-compare-ranking="analysis"] .ranking-list').includes("vs B"), true);
     await app.click('[data-compare-table="analysis"] [data-detail-view="signal"]');
     assert.equal(app.text('[data-compare-table="analysis"] thead tr').includes("综合响度"), true);
@@ -431,6 +431,11 @@ test("real settings flow persists compare default and trace state across reload"
     default_analysis_model: "audiobox",
     trace: true,
     compare_default: "free",
+    preprocess_resample: true,
+    preprocess_to_mono: true,
+    preprocess_extract_audio: true,
+    export_format: "json_csv",
+    history_retention_days: 180,
   };
   const fetchMap = {
     "/api/history": [],
@@ -467,6 +472,63 @@ test("real settings flow persists compare default and trace state across reload"
     await app.click('[data-page="eval"]');
     await app.openCompare("eval");
     assert.equal(app.text('[data-mode-root="eval"] .mode-chip.active'), "基准对比");
+  } finally {
+    await app.close();
+  }
+});
+
+test("settings page persists full advanced options across reload", async () => {
+  const settingsState = {
+    default_eval_model: "dnsmos",
+    default_analysis_model: "audiobox",
+    trace: true,
+    compare_default: "free",
+    preprocess_resample: true,
+    preprocess_to_mono: true,
+    preprocess_extract_audio: true,
+    export_format: "json_csv",
+    history_retention_days: 180,
+  };
+  const fetchMap = {
+    "/api/history": [],
+    "/api/settings": ({ options }) => {
+      if ((options?.method || "GET") === "POST") {
+        Object.assign(settingsState, JSON.parse(options.body));
+      }
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return { ...settingsState };
+        },
+      };
+    },
+  };
+
+  let app = await bootPreview({ fetchMap });
+  try {
+    await app.click('[data-page="settings"]');
+    await app.click('[data-setting-value="default-eval-model"]');
+    await app.click('[data-setting-toggle="preprocess-resample"]');
+    await app.click('[data-setting-toggle="preprocess-to-mono"]');
+    await app.click('[data-setting-toggle="preprocess-extract-audio"]');
+    await app.click('[data-setting-value="export-format"]');
+    await app.click('[data-setting-value="export-format"]');
+    await app.click('[data-setting-value="history-retention-days"]');
+    await app.click('[data-setting-value="history-retention-days"]');
+  } finally {
+    await app.close();
+  }
+
+  app = await bootPreview({ fetchMap });
+  try {
+    await app.click('[data-page="settings"]');
+    assert.equal(app.text('[data-setting-value="default-eval-model"]'), "NISQA");
+    assert.equal(app.window.document.querySelector('[data-setting-toggle="preprocess-resample"]').classList.contains("on"), false);
+    assert.equal(app.window.document.querySelector('[data-setting-toggle="preprocess-to-mono"]').classList.contains("on"), false);
+    assert.equal(app.window.document.querySelector('[data-setting-toggle="preprocess-extract-audio"]').classList.contains("on"), false);
+    assert.equal(app.text('[data-setting-value="export-format"]'), "CSV");
+    assert.equal(app.text('[data-setting-value="history-retention-days"]'), "30 天");
   } finally {
     await app.close();
   }

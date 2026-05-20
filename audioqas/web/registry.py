@@ -78,7 +78,7 @@ default_registry.register_models(
         primary_model="dnsmos",
         options=(
             ModelOption("dnsmos", "DNSMOS", "3维", ("OVRL", "SIG", "BAK")),
-            ModelOption("nisqa", "NISQA", "4维", ("MOS", "Noisiness", "Discontinuity", "Coloration")),
+            ModelOption("nisqa", "NISQA", "5维", ("OVRL", "NOI", "DIS", "COL", "LOUD")),
         ),
     )
 )
@@ -99,8 +99,6 @@ default_registry.register_signal_metrics(
         SignalMetricDefinition("TruePeak", "真实峰值", "dBTP"),
         SignalMetricDefinition("Clipping", "削波次数", "count"),
         SignalMetricDefinition("THD", "谐波失真", "%"),
-        SignalMetricDefinition("SNR", "信噪比", "dB", detail_only=True),
-        SignalMetricDefinition("Stereo", "声像宽度", "band", detail_only=True),
     )
 )
 

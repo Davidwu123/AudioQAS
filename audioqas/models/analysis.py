@@ -1,5 +1,4 @@
 import os
-import subprocess
 from datetime import datetime
 from typing import TypedDict
 
@@ -9,9 +8,18 @@ import pyloudnorm
 from scipy.signal import find_peaks
 from scipy.fft import rfft, rfftfreq
 
-
-DEFAULT_PREPROCESS_DIR = os.path.expanduser("~/Library/Application Support/AudioQAS/preprocessed")
-VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv"}
+from audioqas.logging import get_logger, set_event
+from audioqas.core.preprocessor import (
+    PREPROCESS_SETTINGS,
+    VIDEO_EXTS,
+    _ensure_preprocess_dir,
+    _extract_audio,
+    _to_mono,
+    build_preprocessed_name,
+    current_preprocess_settings,
+    format_pipeline_steps,
+)
+logger = get_logger(__name__)
 
 
 class MetricScore(TypedDict):
@@ -36,6 +44,7 @@ class AnalysisResult(TypedDict):
     duration: float
     preprocessed: bool
     preprocessed_path: str
+    pipeline_steps: list[str]
 
 
 # 3-level thresholds
@@ -70,55 +79,64 @@ def _metric_grade(value: float, good_range: tuple | None = None,
             return "Warning"
     return "Poor"
 
-
-def _preprocessed_name(original_path: str, is_video: bool = False) -> str:
-    base = os.path.splitext(os.path.basename(original_path))[0]
-    parts = [base]
-    if is_video:
-        parts.append("from_video")
-    parts.append("mono")
-    return "_".join(parts) + ".wav"
-
-
-def _ensure_preprocess_dir() -> str:
-    preprocess_dir = os.environ.get("AUDIOQAS_PREPROCESS_DIR", DEFAULT_PREPROCESS_DIR)
-    os.makedirs(preprocess_dir, exist_ok=True)
-    return preprocess_dir
-
-
-def _extract_audio(video_path: str) -> str:
-    out_name = _preprocessed_name(video_path, is_video=True)
-    out_path = os.path.join(_ensure_preprocess_dir(), out_name)
-    cmd = ["ffmpeg", "-i", video_path, "-vn", "-acodec", "pcm_s16le", "-ac", "1", "-y", out_path]
-    subprocess.run(cmd, check=True, capture_output=True)
-    return out_path
+ANALYSIS_TARGET_SR = 48000
 
 
 def _preprocess_for_analysis(audio_path: str) -> tuple[str, dict]:
     ext = os.path.splitext(audio_path)[1].lower()
     is_video = ext in VIDEO_EXTS
+    pipeline_steps = ["source_video" if is_video else "source_audio"]
     if is_video:
-        audio_path = _extract_audio(audio_path)
+        if not PREPROCESS_SETTINGS["extract_audio"]:
+            raise ValueError("video_extract_disabled")
+        out_name = build_preprocessed_name(audio_path, is_video=True)
+        audio_path = _extract_audio(audio_path, ANALYSIS_TARGET_SR, out_name)
+        pipeline_steps.append("extract_audio")
 
     audio, orig_sr = sf.read(audio_path)
     orig_channels = 1 if audio.ndim == 1 else audio.shape[1]
     duration = len(audio) / orig_sr
 
     need_mono = audio.ndim > 1
+    with set_event("preprocess_decision"):
+        logger.debug(
+            "preprocess_decision file=%s is_video=%s orig_sr=%s target_sr=%s need_mono=%s",
+            audio_path,
+            is_video,
+            orig_sr,
+            ANALYSIS_TARGET_SR,
+            need_mono,
+        )
 
     if not need_mono:
+        with set_event("branch_selected"):
+            logger.info("branch=passthrough file=%s sr=%s channels=%s", audio_path, orig_sr, orig_channels)
+        pipeline_steps.append("keep_48k")
         return audio_path, audio, orig_sr, {
             "original_sr": orig_sr,
             "original_channels": orig_channels,
             "duration": duration,
-            "preprocessed": False,
-            "preprocessed_path": "",
+            "preprocessed": is_video,
+            "preprocessed_path": audio_path if is_video else "",
+            "pipeline_steps": pipeline_steps,
         }
 
-    audio = np.mean(audio, axis=1)
-    out_name = _preprocessed_name(audio_path, is_video=is_video)
+    if need_mono and not PREPROCESS_SETTINGS["to_mono"]:
+        raise ValueError("mono_convert_disabled")
+
+    pipeline_steps.extend(["to_mono", "keep_48k"])
+    audio = _to_mono(audio)
+    out_name = build_preprocessed_name(audio_path, is_video=is_video)
     out_path = os.path.join(_ensure_preprocess_dir(), out_name)
     sf.write(out_path, audio, orig_sr)
+    with set_event("preprocess_succeeded"):
+        logger.info(
+            "preprocess_succeeded file=%s output=%s sr=%s pipeline=%s",
+            audio_path,
+            out_path,
+            orig_sr,
+            format_pipeline_steps(pipeline_steps, "AudioAnalyzer"),
+        )
 
     return out_path, audio, orig_sr, {
         "original_sr": orig_sr,
@@ -126,6 +144,7 @@ def _preprocess_for_analysis(audio_path: str) -> tuple[str, dict]:
         "duration": duration,
         "preprocessed": True,
         "preprocessed_path": out_path,
+        "pipeline_steps": pipeline_steps,
     }
 
 
@@ -280,4 +299,6 @@ class AudioAnalyzer:
             duration=meta["duration"],
             preprocessed=meta["preprocessed"],
             preprocessed_path=meta["preprocessed_path"],
+            pipeline_steps=meta["pipeline_steps"],
+            preprocess_settings=current_preprocess_settings(),
         )

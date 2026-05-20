@@ -96,7 +96,7 @@ def test_runtime_compare_render_uses_current_selected_base_group():
     text = APP_PATH.read_text(encoding="utf-8")
     assert 'const activeBaseKey = compareState.base || payload.base_key || "A";' in text
     assert "buildRuntimeCompareSummary(kind, items, compareState.mode, activeBaseKey)" in text
-    assert "相对基准 ${activeBaseKey} 提升最明显。" in text
+    assert 'summary.querySelector(".compare-summary-alt strong").textContent = compareSummary.altHeadline;' in text
     assert "vs ${activeBaseKey}" in text
 
 

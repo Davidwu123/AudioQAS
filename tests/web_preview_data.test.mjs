@@ -38,7 +38,7 @@ test("metrics columns switch to nisqa-specific labels", () => {
   const columns = preview.getDetailColumns("eval", "metrics", { eval: "nisqa", analysis: "audiobox" });
   assert.deepEqual(
     columns.map((item) => item.sub),
-    ["Group", "File", "MOS", "Noisiness", "Discontinuity", "Coloration", "Loudness", "Rank"],
+    ["Group", "File", "OVRL", "NOI", "DIS", "COL", "LOUD", "Rank"],
   );
 });
 
@@ -57,15 +57,6 @@ test("signal/detail/full views show different business columns", () => {
 
   assert.ok(full.includes("pipeline"));
   assert.ok(full.includes("decision"));
-});
-
-test("comparison computation returns best overall and best delta", () => {
-  const groups = preview.getVisibleGroupsByCount("eval", 4, { eval: "dnsmos", analysis: "audiobox" });
-  const result = preview.computeComparisonData("eval", groups, { mode: "base", base: "A" }, { eval: "dnsmos", analysis: "audiobox" });
-  assert.equal(result.bestOverall.key, "D");
-  assert.equal(result.bestDelta.key, "D");
-  assert.equal(result.baseGroup.key, "A");
-  assert.equal(result.byScore.length, 4);
 });
 
 test("detail header rendering respects compare mode", () => {
@@ -231,6 +222,34 @@ test("trace text expands speech model preprocessing steps", () => {
 
   assert.equal(dnsmosTrace, "原始文件 → 转单声道 → 重采样到 16kHz → 送入 DNSMOS");
   assert.equal(nisqaTrace, "原始视频 → 抽取音轨 → 保持 48kHz → 送入 NISQA");
+});
+
+test("trace text prefers backend pipeline steps over inferred defaults", () => {
+  const trace = preview.buildTraceText({
+    file_path: "clip.wav",
+    model_name: "DNSMOS",
+    original_sr: 48000,
+    original_channels: 2,
+    pipeline_steps: ["source_audio"],
+  });
+
+  assert.equal(trace, "原始文件 → 送入 DNSMOS");
+});
+
+test("trace text shows disabled preprocess hints when backend skipped auto steps", () => {
+  const trace = preview.buildTraceText({
+    file_path: "clip.wav",
+    model_name: "DNSMOS",
+    pipeline_steps: ["source_audio"],
+    preprocess_settings: {
+      resample: false,
+      to_mono: false,
+      extract_audio: true,
+    },
+  });
+
+  assert.match(trace, /已关闭自动转单声道/);
+  assert.match(trace, /已关闭自动重采样/);
 });
 
 test("signal metric formatting trims raw floating point noise", () => {
@@ -423,4 +442,58 @@ test("runtime compare summary recomputes delta when base group changes", () => {
   assert.equal(summary.best.delta, -0.3);
   assert.equal(summary.byDelta[0].key, "C");
   assert.equal(summary.byDelta[1].key, "A");
+  assert.equal(summary.altHeadline, "当前基准 B 仍然更好");
+  assert.match(summary.altReason, /比基准 B 更差/);
+});
+
+test("getStatusClass uses separate thresholds for speech and analysis scales", () => {
+  // speech scale (1-5): 4.5 is excellent
+  assert.equal(preview.getStatusClass("score", 4.5, "speech"), "status-excellent");
+  assert.equal(preview.getStatusClass("score", 3.0, "speech"), "status-fair");
+  // analysis scale (1-10): 4.5 is fair, 8.0 is excellent
+  assert.equal(preview.getStatusClass("score", 4.5, "analysis"), "status-fair");
+  assert.equal(preview.getStatusClass("score", 8.0, "analysis"), "status-excellent");
+  assert.equal(preview.getStatusClass("score", 6.0, "analysis"), "status-good");
+});
+
+test("buildRuntimeCompareGroups extracts snr field when present", () => {
+  const payload = {
+    base_key: "A",
+    items: [
+      {
+        key: "A",
+        rank: 1,
+        delta_from_base: 0,
+        file_path: "/tmp/a.wav",
+        task: {
+          model: {
+            model_key: "dnsmos",
+            result: {
+              model_name: "DNSMOS",
+              file_path: "a.wav",
+              original_sr: 48000,
+              original_channels: 2,
+              dimensions: {
+                OVRL: { score: 3.8, grade: "Good", description: "ok" },
+                SIG: { score: 4.1, grade: "Good", description: "clear" },
+                BAK: { score: 3.2, grade: "Fair", description: "noise" },
+              },
+            },
+          },
+          signal: {
+            metrics: {
+              LUFS: { value: -14.8, unit: "LUFS", grade: "Warning" },
+              LRA: { value: 8.2, unit: "LU", grade: "Good" },
+              TruePeak: { value: -0.3, unit: "dBTP", grade: "Warning" },
+              Clipping: { value: 0, unit: "次", grade: "Good" },
+              THD: { value: 0.5, unit: "%", grade: "Good" },
+              SNR: { value: 14.2, unit: "dB", grade: "Good" },
+            },
+          },
+        },
+      },
+    ],
+  };
+  const groups = preview.buildRuntimeCompareGroups("eval", payload, { eval: "dnsmos", analysis: "audiobox" });
+  assert.equal(groups[0].snr, 14.2);
 });

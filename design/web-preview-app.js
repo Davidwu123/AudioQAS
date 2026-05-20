@@ -19,6 +19,11 @@ const state = {
 const settingsState = {
   trace: true,
   compareDefault: "free",
+  preprocessResample: true,
+  preprocessToMono: true,
+  preprocessExtractAudio: true,
+  exportFormat: "json_csv",
+  historyRetentionDays: 180,
 };
 
 const runtimeState = {
@@ -26,10 +31,15 @@ const runtimeState = {
     eval: { file: null, status: "idle", result: null, error: null },
     analysis: { file: null, status: "idle", result: null, error: null },
   },
+  requests: {
+    eval: { single: null, compare: null },
+    analysis: { single: null, compare: null },
+  },
   history: {
     status: "idle",
     items: [],
     error: null,
+    filter: "all",
   },
   compareGroups: {
     eval: {},
@@ -40,6 +50,26 @@ const runtimeState = {
     analysis: null,
   },
 };
+
+let requestCounter = 0;
+const initialMarkup = {};
+
+function nextRequestId(page, scene) {
+  requestCounter += 1;
+  return `req_${page}_${scene}_${String(requestCounter).padStart(4, "0")}`;
+}
+
+function rememberInitialMarkup() {
+  [
+    '[data-page="eval"] [data-scene="single"]',
+    '[data-page="eval"] [data-scene="compare"]',
+    '[data-page="analysis"] [data-scene="single"]',
+    '[data-page="analysis"] [data-scene="compare"]',
+  ].forEach((selector) => {
+    const node = document.querySelector(selector);
+    if (node) initialMarkup[selector] = node.innerHTML;
+  });
+}
 
 const {
   pageMeta,
@@ -114,14 +144,47 @@ function setSingleProgress(page, label, width) {
   if (progressFill) progressFill.style.width = width;
 }
 
+function explainUploadError(status, bodyText) {
+  if (typeof bodyText === "object" && bodyText !== null) {
+    const code = typeof bodyText.code === "string" ? bodyText.code : "";
+    const message = typeof bodyText.message === "string" ? bodyText.message : "";
+    if (message) {
+      if (code === "mono_convert_disabled") {
+        return "自动转单声道已关闭，当前文件需要先转单声道后才能评测。";
+      }
+      if (code === "resample_disabled") {
+        return "自动重采样已关闭，当前文件采样率不符合模型要求。";
+      }
+      if (code === "video_extract_disabled") {
+        return "视频自动提取音轨已关闭，当前视频文件无法直接评测。";
+      }
+      return message;
+    }
+    bodyText = code || JSON.stringify(bodyText);
+  }
+  if (bodyText.includes("mono_convert_disabled")) {
+    return "自动转单声道已关闭，当前文件需要先转单声道后才能评测。";
+  }
+  if (bodyText.includes("resample_disabled")) {
+    return "自动重采样已关闭，当前文件采样率不符合模型要求。";
+  }
+  if (bodyText.includes("video_extract_disabled")) {
+    return "视频自动提取音轨已关闭，当前视频文件无法直接评测。";
+  }
+  return `Upload evaluate failed: ${status}`;
+}
+
 function markSingleLoading(page, file) {
   runtimeState.single[page] = { file, status: "loading", result: null, error: null };
-  setSingleProgress(page, "上传中 10%", "10%");
+  const requestId = runtimeState.requests[page]?.single;
+  setSingleProgress(page, requestId ? `上传中 10% · ${requestId}` : "上传中 10%", "10%");
 }
 
 async function evaluateUploadedFile(page, file) {
   const domain = page === "eval" ? "speech" : "mixed";
   const modelKey = state.models[page];
+  const requestId = nextRequestId(page, "single");
+  runtimeState.requests[page].single = requestId;
   const form = new FormData();
   form.append("domain", domain);
   form.append("model_key", modelKey);
@@ -132,35 +195,48 @@ async function evaluateUploadedFile(page, file) {
   if (!sceneRoot) return;
   const single = sceneRoot.querySelector('[data-scene="single"]');
   sceneRoot.querySelectorAll(".scenario").forEach((node) => node.classList.toggle("active", node === single));
+  state[`${page}Scene`] = "single";
   markSingleLoading(page, file);
-  setSingleProgress(page, "预处理中 25%", "25%");
+  setSingleProgress(page, `预处理中 25% · ${requestId}`, "25%");
 
   try {
     const response = await fetch("/api/evaluate/upload", {
       method: "POST",
       body: form,
+      headers: {
+        "X-Request-Id": requestId,
+      },
     });
-    setSingleProgress(page, "模型评测中 60%", "60%");
+    setSingleProgress(page, `模型评测中 60% · ${requestId}`, "60%");
     if (!response.ok) {
-      throw new Error(`Upload evaluate failed: ${response.status}`);
+      let errorPayload = "";
+      if (typeof response.json === "function") {
+        const json = await response.json();
+        errorPayload = json?.detail ?? json;
+      } else if (typeof response.text === "function") {
+        errorPayload = await response.text();
+      }
+      throw new Error(explainUploadError(response.status, errorPayload));
     }
     const payload = await response.json();
-    setSingleProgress(page, "信号分析中 85%", "85%");
+    setSingleProgress(page, `信号分析中 85% · ${requestId}`, "85%");
     runtimeState.single[page] = { file, status: "success", result: payload, error: null };
     applySingleEvaluation(page, payload, file.name);
-    setSingleProgress(page, "100%", "100%");
+    setSingleProgress(page, `100% · ${requestId}`, "100%");
   } catch (error) {
     console.error(error);
     runtimeState.single[page] = { file, status: "error", result: null, error: String(error) };
-    setSingleProgress(page, "失败", "0%");
+    setSingleProgress(page, `失败 · ${requestId}`, "0%");
     const detail = error instanceof Error ? error.message : String(error);
-    window.alert(`本机评测失败，请确认本地 Python 服务已启动且模型依赖可用。\n\n页面渲染失败：${detail}`);
+    window.alert(`本机评测失败，请确认本地 Python 服务已启动且模型依赖可用。\n\n请求 ID：${requestId}\n页面渲染失败：${detail}`);
   }
 }
 
 async function evaluateCompareUpload(kind) {
   const domain = kind === "eval" ? "speech" : "mixed";
   const modelKey = state.models[kind];
+  const requestId = nextRequestId(kind, "compare");
+  runtimeState.requests[kind].compare = requestId;
   const selectedGroups = Object.entries(runtimeState.compareGroups[kind])
     .sort(([a], [b]) => a.localeCompare(b));
   if (selectedGroups.length < 2) return;
@@ -168,10 +244,11 @@ async function evaluateCompareUpload(kind) {
   const sceneRoot = document.querySelector(`[data-scene-root="${kind}"]`);
   const compare = sceneRoot?.querySelector('[data-scene="compare"]');
   sceneRoot?.querySelectorAll(".scenario").forEach((node) => node.classList.toggle("active", node === compare));
+  state[`${kind}Scene`] = "compare";
 
   const progressLabel = compare?.querySelector(".progress-label");
   const progressFill = compare?.querySelector(".progress-fill");
-  if (progressLabel) progressLabel.textContent = "对比处理中";
+  if (progressLabel) progressLabel.textContent = `对比处理中 · ${requestId}`;
   if (progressFill) progressFill.style.width = "35%";
 
   const multipart = new FormData();
@@ -188,6 +265,9 @@ async function evaluateCompareUpload(kind) {
     const response = await fetch("/api/evaluate/compare-upload", {
       method: "POST",
       body: multipart,
+      headers: {
+        "X-Request-Id": requestId,
+      },
     });
     if (!response.ok) {
       throw new Error(`Compare upload failed: ${response.status}`);
@@ -195,13 +275,13 @@ async function evaluateCompareUpload(kind) {
     const payload = await response.json();
     runtimeState.compareResults[kind] = payload;
     renderCompareFromRuntime(kind, payload);
-    if (progressLabel) progressLabel.textContent = "100%";
+    if (progressLabel) progressLabel.textContent = `100% · ${requestId}`;
     if (progressFill) progressFill.style.width = "100%";
   } catch (error) {
     console.error(error);
-    if (progressLabel) progressLabel.textContent = "失败";
+    if (progressLabel) progressLabel.textContent = `失败 · ${requestId}`;
     if (progressFill) progressFill.style.width = "0%";
-    window.alert("本机对比评测失败，请确认本地 Python 服务已启动且模型依赖可用。");
+    window.alert(`本机对比评测失败，请确认本地 Python 服务已启动且模型依赖可用。\n\n请求 ID：${requestId}`);
   }
 }
 
@@ -220,6 +300,113 @@ function setScene(page, scene) {
     state.compare[page].mode = settingsState.compareDefault;
   }
   render();
+}
+
+function resetPageState(page) {
+  runtimeState.single[page] = { file: null, status: "idle", result: null, error: null };
+  runtimeState.compareResults[page] = null;
+  runtimeState.compareGroups[page] = {};
+  runtimeState.requests[page].single = null;
+  runtimeState.requests[page].compare = null;
+  state.detailViews[page] = "metrics";
+  state.compare[page] = { mode: settingsState.compareDefault, base: "A" };
+  compareGroupState[page] = 0;
+
+  const selectors = [
+    `[data-page="${page}"] [data-scene="single"]`,
+    `[data-page="${page}"] [data-scene="compare"]`,
+  ];
+  selectors.forEach((selector) => {
+    const node = document.querySelector(selector);
+    if (node && initialMarkup[selector]) {
+      node.innerHTML = initialMarkup[selector];
+    }
+  });
+
+  state[`${page}Scene`] = "single";
+  render();
+}
+
+function formatExportSetting(value) {
+  if (value === "json") return "JSON";
+  if (value === "csv") return "CSV";
+  return "CSV + JSON";
+}
+
+function nextExportFormat(value) {
+  if (value === "json_csv") return "json";
+  if (value === "json") return "csv";
+  return "json_csv";
+}
+
+function formatHistoryRetentionDays(value) {
+  return value >= 99999 ? "永久" : `${value} 天`;
+}
+
+function nextHistoryRetentionDays(value) {
+  if (value === 30) return 90;
+  if (value === 90) return 180;
+  if (value === 180) return 99999;
+  return 30;
+}
+
+function buildExportPayload(page) {
+  const single = runtimeState.single[page];
+  if (single?.status === "success" && single.result) {
+    return {
+      page,
+      scene: "single",
+      request_id: runtimeState.requests[page].single,
+      exported_at: new Date().toISOString(),
+      file_name: single.file?.name || null,
+      payload: single.result,
+    };
+  }
+  const compare = runtimeState.compareResults[page];
+  if (compare) {
+    return {
+      page,
+      scene: "compare",
+      request_id: runtimeState.requests[page].compare,
+      exported_at: new Date().toISOString(),
+      compare_mode: state.compare[page].mode,
+      payload: compare,
+    };
+  }
+  return null;
+}
+
+function downloadExport(page) {
+  const exportPayload = buildExportPayload(page);
+  if (!exportPayload) {
+    window.alert("当前页面还没有可导出的结果。");
+    return;
+  }
+  const scene = exportPayload.scene;
+  const download = (content, type, ext) => {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `audioqas_${page}_${scene}.${ext}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+  if (settingsState.exportFormat === "json" || settingsState.exportFormat === "json_csv") {
+    download(JSON.stringify(exportPayload, null, 2), "application/json", "json");
+  }
+  if (settingsState.exportFormat === "csv" || settingsState.exportFormat === "json_csv") {
+    const rows = [
+      ["page", page],
+      ["scene", scene],
+      ["request_id", exportPayload.request_id || ""],
+      ["exported_at", exportPayload.exported_at],
+    ];
+    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
+    download(csv, "text/csv", "csv");
+  }
 }
 
 function buildFactRows(lines) {
@@ -242,6 +429,9 @@ function renderModelContent(scope) {
   if (docButton) docButton.textContent = config.docLabel;
 
   if (scope === "eval") {
+    if (runtimeState.single.eval.status === "success") {
+      return;
+    }
     const summary = document.querySelector("[data-eval-file-summary]");
     if (summary) {
       summary.textContent = modelKey === "nisqa"
@@ -266,7 +456,7 @@ function renderModelContent(scope) {
     const compareSub = document.querySelector('[data-compare-primary-sub="eval"]');
     if (compareLabel && compareSub) {
       compareLabel.textContent = modelKey === "nisqa" ? "整体质量" : "整体听感";
-      compareSub.textContent = modelKey === "nisqa" ? "MOS" : "OVRL";
+      compareSub.textContent = "OVRL";
     }
   }
 }
@@ -429,6 +619,11 @@ async function loadSettings() {
     state.models.analysis = payload.default_analysis_model || state.models.analysis;
     settingsState.trace = payload.trace ?? settingsState.trace;
     settingsState.compareDefault = payload.compare_default || settingsState.compareDefault;
+    settingsState.preprocessResample = payload.preprocess_resample ?? settingsState.preprocessResample;
+    settingsState.preprocessToMono = payload.preprocess_to_mono ?? settingsState.preprocessToMono;
+    settingsState.preprocessExtractAudio = payload.preprocess_extract_audio ?? settingsState.preprocessExtractAudio;
+    settingsState.exportFormat = payload.export_format || settingsState.exportFormat;
+    settingsState.historyRetentionDays = payload.history_retention_days ?? settingsState.historyRetentionDays;
     ["eval", "analysis"].forEach((kind) => {
       if (state[`${kind}Scene`] === "compare") {
         state.compare[kind].mode = settingsState.compareDefault;
@@ -455,6 +650,11 @@ async function persistSettings(patch) {
     state.models.analysis = payload.default_analysis_model || state.models.analysis;
     settingsState.trace = payload.trace ?? settingsState.trace;
     settingsState.compareDefault = payload.compare_default || settingsState.compareDefault;
+    settingsState.preprocessResample = payload.preprocess_resample ?? settingsState.preprocessResample;
+    settingsState.preprocessToMono = payload.preprocess_to_mono ?? settingsState.preprocessToMono;
+    settingsState.preprocessExtractAudio = payload.preprocess_extract_audio ?? settingsState.preprocessExtractAudio;
+    settingsState.exportFormat = payload.export_format || settingsState.exportFormat;
+    settingsState.historyRetentionDays = payload.history_retention_days ?? settingsState.historyRetentionDays;
   } catch (error) {
     console.error(error);
   }
@@ -475,10 +675,11 @@ function renderCompareBuilder(kind) {
   if (!builder || !baseRow) return;
 
   const visibleGroups = getVisibleGroups(kind);
+  const selectedGroups = runtimeState.compareGroups[kind] || {};
   builder.querySelectorAll(".group-card").forEach((card, index) => {
     const group = visibleGroups[index];
     if (!group) return;
-    const selected = runtimeState.compareGroups[kind][group.key];
+    const selected = selectedGroups[group.key];
     const text = selected ? `${selected.name}<br>本机已选择` : group.inputText;
     card.innerHTML = `<strong>${group.key}</strong><span>${text}</span>`;
     card.classList.remove("active", "empty");
@@ -505,6 +706,7 @@ function renderCompareBuilder(kind) {
 }
 
 function renderCompareSection(kind) {
+  const domain = kind === "analysis" ? "analysis" : "speech";
   const runtimeCompare = runtimeState.compareResults[kind];
   if (runtimeCompare) {
     renderCompareFromRuntime(kind, runtimeCompare);
@@ -537,12 +739,13 @@ function renderCompareSection(kind) {
     const helperLabel = mode === "base" ? "当前基准" : "峰值";
     const helperValue = mode === "base" ? baseGroup.key : winner.peak.toFixed(1);
     const helperClass = mode === "base" ? "status-good" : getStatusClass("peak", winner.peak);
+    const domain = kind === "analysis" ? "analysis" : "speech";
     const thirdLabel = kind === "analysis" ? (mode === "base" ? "总分" : "状态") : (mode === "base" ? "总分" : "削波");
     const thirdValue = kind === "analysis"
       ? (mode === "base" ? formatScore(winner.score) : "可优化后交付")
       : (mode === "base" ? formatScore(winner.score) : String(winner.clipping));
     const thirdClass = mode === "base"
-      ? getStatusClass("score", winner.score)
+      ? getStatusClass("score", winner.score, domain)
       : kind === "analysis"
         ? "status-good"
         : getStatusClass("clipping", winner.clipping);
@@ -560,7 +763,7 @@ function renderCompareSection(kind) {
     summary.querySelector(".compare-summary-default .compare-reason").textContent = bestOverall.rationale;
     const defaultKpis = summary.querySelectorAll(".compare-summary-default .compare-kpi span");
     defaultKpis[0].textContent = formatScore(bestOverall.score);
-    defaultKpis[0].className = getStatusClass("score", bestOverall.score);
+    defaultKpis[0].className = getStatusClass("score", bestOverall.score, domain);
     defaultKpis[1].textContent = bestOverall.peak.toFixed(1);
     defaultKpis[1].className = getStatusClass("peak", bestOverall.peak);
     defaultKpis[2].textContent = kind === "analysis" ? "可优化后交付" : String(bestOverall.clipping);
@@ -603,7 +806,7 @@ function renderCompareSection(kind) {
           <span>${main}</span>
         </div>
         <div class="ranking-score">
-          <strong class="${getStatusClass("score", group.score)}">${score}</strong>
+          <strong class="${getStatusClass("score", group.score, domain)}">${score}</strong>
           <span>${sub}</span>
         </div>
       </div>`;
@@ -650,8 +853,14 @@ function renderCompareFromRuntime(kind, payload) {
   const activeBaseGroup = items.find((item) => item.key === activeBaseKey) || items[0] || null;
   const compareSummary = buildRuntimeCompareSummary(kind, items, compareState.mode, activeBaseKey);
   const best = compareSummary.best;
+  const displayItems = items.map((item) => ({
+    ...item,
+    delta: Number((item.score - (activeBaseGroup?.score ?? 0)).toFixed(2)),
+  }));
+  const displaySorted = [...displayItems].sort((a, b) => a.rank - b.rank);
   const summary = document.querySelector(`[data-compare-summary="${kind}"]`);
   if (summary && best) {
+    summary.classList.toggle("alt", compareState.mode === "base");
     summary.querySelector(".compare-summary-default .winner-mark").textContent = best.key;
     summary.querySelector(".compare-summary-default strong").textContent = `推荐版本 ${best.key}`;
     summary.querySelector(".compare-summary-default .winner-copy span").textContent = compareSummary.defaultSubline;
@@ -661,8 +870,8 @@ function renderCompareFromRuntime(kind, payload) {
     spans[1].textContent = compareSummary.defaultKpis.peak;
     spans[2].textContent = kind === "analysis" ? "可优化后交付" : compareSummary.defaultKpis.clipping;
     summary.querySelector(".compare-summary-alt .winner-mark").textContent = best.key;
-    summary.querySelector(".compare-summary-alt strong").textContent = `推荐版本 ${best.key}`;
-    summary.querySelector(".compare-summary-alt .winner-copy span").textContent = `\`${best.file}\` 相对基准 ${activeBaseKey} 提升最明显。`;
+    summary.querySelector(".compare-summary-alt strong").textContent = compareSummary.altHeadline;
+    summary.querySelector(".compare-summary-alt .winner-copy span").textContent = `\`${best.file}\` vs ${activeBaseKey} ${formatSigned(best.delta)}`;
     summary.querySelector(".compare-summary-alt .compare-reason").textContent = compareSummary.altReason;
     const altSpans = summary.querySelectorAll(".compare-summary-alt .compare-kpi span");
     altSpans[0].textContent = formatSigned(best.delta);
@@ -672,15 +881,21 @@ function renderCompareFromRuntime(kind, payload) {
 
   const ranking = document.querySelector(`[data-compare-ranking="${kind}"] .ranking-list`);
   if (ranking) {
-    ranking.innerHTML = sorted.map((item, index) => `
+    ranking.innerHTML = displaySorted.map((item, index) => `
       <div class="ranking-card${index === 0 ? " top" : ""}">
         <div class="ranking-index">#${index + 1}</div>
         <div class="ranking-main">
           <strong>${item.key} · ${item.file}</strong>
-          <span>${item.rationale}</span>
+          <span>${compareState.mode === "base"
+            ? item.delta > 0
+              ? "比基准更好"
+              : item.delta === 0
+                ? "与基准持平"
+                : "比基准更差"
+            : item.rationale}</span>
         </div>
         <div class="ranking-score">
-          <strong class="${getStatusClass("score", item.score)}">${formatScore(item.score)}</strong>
+          <strong class="${getStatusClass("score", item.score, kind === "analysis" ? "analysis" : "speech")}">${formatScore(item.score)}</strong>
           <span>${compareState.mode === "base"
             ? `vs ${activeBaseKey} ${formatSigned(item.score - (activeBaseGroup?.score ?? 0))}`
             : `综合排序第${index + 1}`}</span>
@@ -705,7 +920,7 @@ function renderCompareFromRuntime(kind, payload) {
     }
     const tbody = tableRoot.querySelector("tbody");
     if (tbody) {
-      tbody.innerHTML = items.map((group) => {
+      tbody.innerHTML = displayItems.map((group) => {
         const columns = getDetailColumns(kind, view, state.models).filter((column) => !column.mode || column.mode === compareState.mode);
         return `<tr>${columns.map((column) => buildDetailCell(column.key, group, { delta: group.delta, rank: group.rank })).join("")}</tr>`;
       }).join("");
@@ -727,6 +942,20 @@ function renderHistory() {
   const empty = document.querySelector("[data-history-empty]");
   if (!stack || !empty) return;
   const items = runtimeState.history.items;
+  const filteredItems = items.filter((item) => {
+    switch (runtimeState.history.filter) {
+      case "eval":
+        return item.page_key === "eval";
+      case "analysis":
+        return item.page_key === "analysis";
+      case "compare-free":
+        return item.scene === "compare" && item.compare_mode === "free";
+      case "compare-base":
+        return item.scene === "compare" && item.compare_mode === "base";
+      default:
+        return true;
+    }
+  });
   const showEmpty = runtimeState.history.status === "success" && items.length === 0;
   empty.style.display = showEmpty ? "" : "none";
   if (showEmpty) {
@@ -740,14 +969,21 @@ function renderHistory() {
     return;
   }
   if (runtimeState.history.status !== "success") return;
-  stack.innerHTML = items.map((item) => `
+  if (!filteredItems.length) {
+    empty.style.display = "";
+    empty.textContent = "当前筛选条件下暂无历史任务";
+    stack.innerHTML = "";
+    return;
+  }
+  empty.textContent = "暂无历史任务";
+  stack.innerHTML = filteredItems.map((item) => `
     <div class="timeline-card">
       <div class="timeline-top">
         <div>
           <h3>${item.timestamp} · ${item.page_title}</h3>
           <p>${item.file_summary} · ${item.model_label} · ${item.scene === "compare" ? "对比" : "单文件"}</p>
         </div>
-        <button class="small-btn">查看详情</button>
+        <button class="small-btn" data-history-detail="${item.id}">查看详情</button>
       </div>
       <div class="timeline-tags">
         ${item.summary_metrics.map((metric) => `<span class="meta-pill">${metric}</span>`).join("")}
@@ -762,10 +998,42 @@ function renderSettings() {
   const analysisModel = document.querySelector('[data-setting-value="default-analysis-model"]');
   const traceToggle = document.querySelector('[data-setting-toggle="trace"]');
   const compareDefault = document.querySelector('[data-setting-value="compare-default"]');
+  const preprocessResample = document.querySelector('[data-setting-toggle="preprocess-resample"]');
+  const preprocessToMono = document.querySelector('[data-setting-toggle="preprocess-to-mono"]');
+  const preprocessExtractAudio = document.querySelector('[data-setting-toggle="preprocess-extract-audio"]');
+  const exportFormat = document.querySelector('[data-setting-value="export-format"]');
+  const historyRetentionDays = document.querySelector('[data-setting-value="history-retention-days"]');
   if (evalModel) evalModel.textContent = state.models.eval === "nisqa" ? "NISQA" : "DNSMOS";
   if (analysisModel) analysisModel.textContent = "AudioBox Aesthetics";
   if (traceToggle) traceToggle.classList.toggle("on", settingsState.trace);
   if (compareDefault) compareDefault.textContent = settingsState.compareDefault === "free" ? "自由对比" : "基准对比";
+  if (preprocessResample) preprocessResample.classList.toggle("on", settingsState.preprocessResample);
+  if (preprocessToMono) preprocessToMono.classList.toggle("on", settingsState.preprocessToMono);
+  if (preprocessExtractAudio) preprocessExtractAudio.classList.toggle("on", settingsState.preprocessExtractAudio);
+  if (exportFormat) exportFormat.textContent = formatExportSetting(settingsState.exportFormat);
+  if (historyRetentionDays) historyRetentionDays.textContent = formatHistoryRetentionDays(settingsState.historyRetentionDays);
+}
+
+async function showHistoryDetail(itemId) {
+  try {
+    const response = await fetch(`/api/history/${itemId}`);
+    if (!response.ok) {
+      throw new Error(`History detail failed: ${response.status}`);
+    }
+    const payload = await response.json();
+    const lines = [
+      `时间: ${payload.timestamp}`,
+      `页面: ${payload.page_title}`,
+      `模型: ${payload.model_label}`,
+      `场景: ${payload.scene}`,
+      `文件: ${payload.file_summary}`,
+      `追溯: ${payload.trace_summary}`,
+    ];
+    window.alert(lines.join("\n"));
+  } catch (error) {
+    console.error(error);
+    window.alert(`历史详情加载失败：${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function renderDetailViews() {
@@ -847,7 +1115,8 @@ function render() {
 function animateVisibleProgress() {
   document.querySelectorAll(".page.active .scenario.active .progress-fill").forEach((fill) => {
     const label = fill.closest(".progress-panel").querySelector(".progress-label");
-    const target = Number(fill.dataset.target || "100");
+    const styleWidth = fill.style.width || "0%";
+    const target = Number.parseInt(styleWidth, 10) || 0;
     fill.style.width = "0%";
     if (label) label.textContent = "0%";
     const duration = 900;
@@ -884,7 +1153,6 @@ document.querySelectorAll('[data-upload-trigger="analysis:single"]').forEach((bu
 document.querySelectorAll("[data-scene-trigger]").forEach((button) => {
   button.addEventListener("click", () => {
     const [page, scene] = button.dataset.sceneTrigger.split(":");
-    if (scene === "single") return;
     setScene(page, scene);
   });
 });
@@ -908,8 +1176,21 @@ document.querySelectorAll("[data-setting-toggle]").forEach((toggle) => {
     toggle.classList.toggle("on");
     const key = toggle.dataset.settingToggle;
     if (key === "trace") settingsState.trace = toggle.classList.contains("on");
-    await persistSettings({ trace: settingsState.trace });
+    if (key === "preprocess-resample") settingsState.preprocessResample = toggle.classList.contains("on");
+    if (key === "preprocess-to-mono") settingsState.preprocessToMono = toggle.classList.contains("on");
+    if (key === "preprocess-extract-audio") settingsState.preprocessExtractAudio = toggle.classList.contains("on");
+    await persistSettings({
+      trace: settingsState.trace,
+      preprocess_resample: settingsState.preprocessResample,
+      preprocess_to_mono: settingsState.preprocessToMono,
+      preprocess_extract_audio: settingsState.preprocessExtractAudio,
+    });
   });
+});
+
+document.querySelector('[data-setting-value="default-eval-model"]')?.addEventListener("click", async () => {
+  state.models.eval = state.models.eval === "dnsmos" ? "nisqa" : "dnsmos";
+  await persistSettings({ default_eval_model: state.models.eval });
 });
 
 document.querySelector('[data-setting-value="compare-default"]')?.addEventListener("click", async (event) => {
@@ -920,6 +1201,20 @@ document.querySelector('[data-setting-value="compare-default"]')?.addEventListen
     if (state[`${kind}Scene`] === "compare") state.compare[kind].mode = settingsState.compareDefault;
   });
   await persistSettings({ compare_default: settingsState.compareDefault });
+});
+
+document.querySelector('[data-setting-value="export-format"]')?.addEventListener("click", async (event) => {
+  const target = event.currentTarget;
+  settingsState.exportFormat = nextExportFormat(settingsState.exportFormat);
+  target.textContent = formatExportSetting(settingsState.exportFormat);
+  await persistSettings({ export_format: settingsState.exportFormat });
+});
+
+document.querySelector('[data-setting-value="history-retention-days"]')?.addEventListener("click", async (event) => {
+  const target = event.currentTarget;
+  settingsState.historyRetentionDays = nextHistoryRetentionDays(settingsState.historyRetentionDays);
+  target.textContent = formatHistoryRetentionDays(settingsState.historyRetentionDays);
+  await persistSettings({ history_retention_days: settingsState.historyRetentionDays });
 });
 
 document.querySelectorAll(".detail-switch").forEach((group) => {
@@ -956,13 +1251,30 @@ document.querySelectorAll(".history-filters").forEach((group) => {
     button.addEventListener("click", () => {
       group.querySelectorAll(".small-btn").forEach((node) => node.classList.remove("active"));
       button.classList.add("active");
+      runtimeState.history.filter = button.dataset.historyFilter || "all";
+      renderHistory();
     });
+  });
+});
+
+document.querySelectorAll("[data-export-trigger]").forEach((button) => {
+  button.addEventListener("click", () => {
+    downloadExport(button.dataset.exportTrigger);
+  });
+});
+
+document.querySelectorAll("[data-reset-trigger]").forEach((button) => {
+  button.addEventListener("click", () => {
+    resetPageState(button.dataset.resetTrigger);
   });
 });
 
 document.querySelectorAll("[data-model-scope]").forEach((button) => {
   button.addEventListener("click", () => {
-    state.models[button.dataset.modelScope] = button.dataset.modelKey;
+    const scope = button.dataset.modelScope;
+    state.models[scope] = button.dataset.modelKey;
+    runtimeState.compareGroups[scope === "eval" ? "eval" : "analysis"] = {};
+    runtimeState.compareResults[scope === "eval" ? "eval" : "analysis"] = null;
     render();
   });
 });
@@ -1009,6 +1321,13 @@ document.querySelectorAll("[data-add-group]").forEach((button) => {
   button.addEventListener("click", () => addCompareGroup(button.dataset.addGroup));
 });
 
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-history-detail]");
+  if (!button) return;
+  await showHistoryDetail(button.dataset.historyDetail);
+});
+
+rememberInitialMarkup();
 loadHistoryItems();
 loadSettings();
 render();

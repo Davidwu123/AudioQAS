@@ -1,9 +1,23 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
+from audioqas.logging import get_logger, set_event
 from audioqas.web.history_store import HistoryStore
 from audioqas.web.registry import ModelRegistry, default_registry
 from audioqas.web.schemas import EvalDomain
 from audioqas.web.settings_store import SettingsStore
+
+logger = get_logger(__name__)
+
+
+def _parse_history_timestamp(raw: str) -> datetime | None:
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+    return None
 
 
 class WebPreviewService:
@@ -60,22 +74,38 @@ class WebPreviewService:
         ]
 
     def bootstrap_payload(self) -> dict:
-        return {
+        payload = {
             "navigation": self.navigation(),
             "models": self.model_catalog(),
             "signal_metrics": self.signal_catalog(),
             "settings": self.settings(),
         }
+        with set_event("bootstrap_payload_built"):
+            logger.info("bootstrap_payload_built navigation=%s", len(payload["navigation"]))
+        return payload
 
     def history_items(self) -> list[dict]:
         if not self._history_store:
             return []
-        return self._history_store.list_items()
+        items = self._history_store.list_items()
+        retention_days = self.settings().get("history_retention_days", 180)
+        if retention_days < 99999:
+            cutoff = datetime.now() - timedelta(days=retention_days)
+            items = [
+                item for item in items
+                if (_parse_history_timestamp(item["timestamp"]) or datetime.min) >= cutoff
+            ]
+        with set_event("history_items_loaded"):
+            logger.info("history_items_loaded count=%s", len(items))
+        return items
 
     def history_detail(self, item_id: str) -> dict | None:
         if not self._history_store:
             return None
-        return self._history_store.get_item(item_id)
+        item = self._history_store.get_item(item_id)
+        with set_event("history_detail_loaded"):
+            logger.info("history_detail_loaded item_id=%s found=%s", item_id, item is not None)
+        return item
 
     def settings(self) -> dict:
         if not self._settings_store:
@@ -85,9 +115,15 @@ class WebPreviewService:
                 "trace": True,
                 "compare_default": "free",
             }
-        return self._settings_store.get_settings()
+        settings = self._settings_store.get_settings()
+        with set_event("settings_loaded"):
+            logger.info("settings_loaded compare_default=%s", settings["compare_default"])
+        return settings
 
     def update_settings(self, patch: dict) -> dict:
         if not self._settings_store:
             return self.settings()
-        return self._settings_store.update_settings(patch)
+        settings = self._settings_store.update_settings(patch)
+        with set_event("settings_updated"):
+            logger.info("settings_updated keys=%s", sorted(patch.keys()))
+        return settings

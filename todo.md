@@ -103,12 +103,71 @@
   - 补更多历史任务类型
   - 补更多设置项状态组合
   - 补更多 compare 边界场景
+- [x] 统一运行产物默认路径到工程内
+  - 预处理中间文件默认写入 `.tmp/preprocessed`
+  - 上传缓存默认写入 `.tmp/web_uploads`
+  - Web 状态默认写入 `.tmp/web_state`
+  - 日志固定写入 `log/`
+  - 保留环境变量覆盖能力，避免再默认落到用户目录
 - [ ] 把网页端预览当前规则继续沉淀为更稳定的数据契约：
   - 页面状态
   - 模型说明结构
   - 详细数据列定义
   - 历史摘要结构
 - [ ] 评估是否需要把 `docs/web-product-spec.md` 拆成更短的产品需求 / 交互规则两份文档
+- [~] 增加统一日志模块，支持运行态全链路定位
+  - [x] 新增统一日志配置中心
+    - 日志目录固定为工程根目录 `log/`
+    - 主日志文件：`log/audioqas.log`
+    - 错误日志文件：`log/audioqas.error.log`
+    - 单文件最大 `20MB`
+    - 超过后按 `.1 .2 .3` 递增滚动
+  - [x] 支持启动配置日志级别与日志参数
+    - `AUDIOQAS_LOG_LEVEL`
+    - `AUDIOQAS_LOG_DIR`
+    - `AUDIOQAS_LOG_MAX_MB`
+    - `AUDIOQAS_LOG_BACKUP_COUNT`
+  - [x] 统一日志格式
+    - 包含：
+      - 时间戳
+      - 线程号
+      - 日志级别
+      - `request_id`
+      - `scene`
+      - `event`
+      - 文件名与行号
+      - 模块标签
+  - [x] 统一 `request_id` 规则
+    - 单次 `single` 请求一个 `request_id`
+    - 单次 `compare` 请求一个 `request_id`
+    - 单次 `batch` 请求一个 `request_id`
+    - 单次 `settings` 更新一个 `request_id`
+    - compare / batch 内部多文件不拆分 `request_id`
+  - [~] 第一阶段接入 API / task / model / preprocessor / store 主链路
+    - [x] `audioqas/web/run_local.py`
+    - [x] `audioqas/web/api.py`
+    - [x] `audioqas/web/tasks.py`
+    - [x] `audioqas/web/services.py`
+    - [x] `audioqas/core/preprocessor.py`
+    - [x] `audioqas/models/dnsmos.py`
+    - [x] `audioqas/models/nisqa.py`
+    - [x] `audioqas/models/audiobox_aesthetics.py`
+    - [x] `audioqas/models/analysis.py`
+    - [x] `audioqas/web/history_store.py`
+    - [x] `audioqas/web/settings_store.py`
+  - [x] 日志设计按“链路事件 + 分支事件 + 结果事件 + 异常事件”落地
+    - 不是只做机械入口/出口日志
+    - 重点能判断：
+      - 走到哪个分支
+      - 为什么走这个分支
+      - 分支是否完成
+      - 异常在哪一层中断
+  - [x] 增加日志模块测试
+    - [x] 目录自动创建
+    - [x] 滚动策略生效
+    - [x] `request_id` 透传
+    - [x] 关键日志字段存在
+    - [x] `ERROR` 同时进入主日志与错误日志
 
 ## 桌面实现后续处理
 

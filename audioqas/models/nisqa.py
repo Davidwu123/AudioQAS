@@ -1,5 +1,4 @@
 import os
-import subprocess
 import tempfile
 from datetime import datetime
 
@@ -7,12 +6,24 @@ import numpy as np
 import soundfile as sf
 from nisqa.NISQA_model import nisqaModel
 
+from audioqas.logging import get_logger, set_event
 from audioqas.models.base import BaseScorer, ScoreResult, score_to_grade
 from audioqas.core.dimensions import DimensionRegistry
+from audioqas.core.preprocessor import (
+    PREPROCESS_SETTINGS,
+    VIDEO_EXTS,
+    _ensure_preprocess_dir,
+    _extract_audio,
+    _to_mono,
+    _resample,
+    build_preprocessed_name,
+    current_preprocess_settings,
+    format_pipeline_steps,
+)
 
 WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "weights", "nisqa.tar")
-DEFAULT_PREPROCESS_DIR = os.path.expanduser("~/Library/Application Support/AudioQAS/preprocessed")
 NISQA_TARGET_SR = 48000
+logger = get_logger(__name__)
 
 NISQA_LABELS = {
     "OVRL": "整体听感",
@@ -85,68 +96,72 @@ NISQA_METAPHORS = {
 
 DimensionRegistry.register("NISQA", NISQA_LABELS, NISQA_DESCRIPTIONS, NISQA_METAPHORS)
 
-VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv"}
-
-
-def _preprocessed_name(original_path: str, target_sr: int, is_video: bool = False) -> str:
-    base = os.path.splitext(os.path.basename(original_path))[0]
-    parts = [base]
-    if is_video:
-        parts.append("from_video")
-    parts.append(f"{target_sr}Hz")
-    parts.append("mono")
-    return "_".join(parts) + ".wav"
-
-
-def _ensure_preprocess_dir() -> str:
-    preprocess_dir = os.environ.get("AUDIOQAS_PREPROCESS_DIR", DEFAULT_PREPROCESS_DIR)
-    os.makedirs(preprocess_dir, exist_ok=True)
-    return preprocess_dir
-
-
-def _extract_audio(video_path: str) -> str:
-    out_name = _preprocessed_name(video_path, NISQA_TARGET_SR, is_video=True)
-    out_path = os.path.join(_ensure_preprocess_dir(), out_name)
-    cmd = ["ffmpeg", "-i", video_path, "-vn", "-acodec", "pcm_s16le",
-           "-ar", str(NISQA_TARGET_SR), "-ac", "1", "-y", out_path]
-    subprocess.run(cmd, check=True, capture_output=True)
-    return out_path
-
-
 def _preprocess_for_nisqa(audio_path: str) -> tuple[str, dict]:
     ext = os.path.splitext(audio_path)[1].lower()
     is_video = ext in VIDEO_EXTS
+    pipeline_steps = ["source_video" if is_video else "source_audio"]
     if is_video:
-        audio_path = _extract_audio(audio_path)
+        if not PREPROCESS_SETTINGS["extract_audio"]:
+            raise ValueError("video_extract_disabled")
+        out_name = build_preprocessed_name(audio_path, target_sr=NISQA_TARGET_SR, is_video=True)
+        audio_path = _extract_audio(audio_path, NISQA_TARGET_SR, out_name)
+        pipeline_steps.append("extract_audio")
 
     audio, orig_sr = sf.read(audio_path)
     orig_channels = 1 if audio.ndim == 1 else audio.shape[1]
     duration = len(audio) / orig_sr
-
     need_resample = orig_sr != NISQA_TARGET_SR
     need_mono = audio.ndim > 1
+    with set_event("preprocess_decision"):
+        logger.debug(
+            "preprocess_decision file=%s is_video=%s orig_sr=%s target_sr=%s need_mono=%s need_resample=%s",
+            audio_path,
+            is_video,
+            orig_sr,
+            NISQA_TARGET_SR,
+            need_mono,
+            need_resample,
+        )
 
     if not need_resample and not need_mono:
+        with set_event("branch_selected"):
+            logger.info("branch=passthrough file=%s sr=%s channels=%s", audio_path, orig_sr, orig_channels)
+        pipeline_steps.append("keep_48k")
         return audio_path, {
             "original_sr": orig_sr,
             "original_channels": orig_channels,
             "duration": duration,
-            "preprocessed": False,
-            "preprocessed_path": "",
+            "preprocessed": is_video,
+            "preprocessed_path": audio_path if is_video else "",
+            "pipeline_steps": pipeline_steps,
         }
 
+    if need_mono and not PREPROCESS_SETTINGS["to_mono"]:
+        raise ValueError("mono_convert_disabled")
+    if need_resample and not PREPROCESS_SETTINGS["resample"]:
+        raise ValueError("resample_disabled")
+
     if need_mono:
-        audio = np.mean(audio, axis=1)
+        pipeline_steps.append("to_mono")
+        audio = _to_mono(audio)
 
     if need_resample:
-        duration = len(audio) / orig_sr
-        target_len = int(round(duration * NISQA_TARGET_SR))
-        indices = np.linspace(0, len(audio) - 1, target_len)
-        audio = np.interp(indices, np.arange(len(audio)), audio)
+        pipeline_steps.append("keep_48k")
+        audio = _resample(audio, orig_sr, NISQA_TARGET_SR)
+    else:
+        pipeline_steps.append("keep_48k")
 
-    out_name = _preprocessed_name(audio_path, NISQA_TARGET_SR, is_video=is_video)
+    out_name = build_preprocessed_name(audio_path, target_sr=NISQA_TARGET_SR, is_video=is_video)
     out_path = os.path.join(_ensure_preprocess_dir(), out_name)
     sf.write(out_path, audio, NISQA_TARGET_SR)
+    with set_event("preprocess_succeeded"):
+        logger.info(
+            "preprocess_succeeded file=%s output=%s sr=%s pipeline=%s",
+            audio_path,
+            out_path,
+            NISQA_TARGET_SR,
+            format_pipeline_steps(pipeline_steps, "NISQA"),
+        )
 
     return out_path, {
         "original_sr": orig_sr,
@@ -154,6 +169,7 @@ def _preprocess_for_nisqa(audio_path: str) -> tuple[str, dict]:
         "duration": duration,
         "preprocessed": True,
         "preprocessed_path": out_path,
+        "pipeline_steps": pipeline_steps,
     }
 
 
@@ -224,4 +240,6 @@ class NISQAScorer(BaseScorer):
             duration=meta["duration"],
             preprocessed=meta["preprocessed"],
             preprocessed_path=meta["preprocessed_path"],
+            pipeline_steps=meta["pipeline_steps"],
+            preprocess_settings=current_preprocess_settings(),
         )

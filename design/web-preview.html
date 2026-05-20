@@ -1731,8 +1731,8 @@ tbody tr:hover td{
         <div class="shell-toolbar">
           <button class="ghost-btn" data-upload-trigger="eval:single">单文件测评</button>
           <button class="ghost-btn" data-scene-trigger="eval:compare" data-compare-btn="eval">对比评测</button>
-          <button class="ghost-btn">导出结果</button>
-          <button class="ghost-btn">重置</button>
+          <button class="ghost-btn" data-export-trigger="eval">导出结果</button>
+          <button class="ghost-btn" data-reset-trigger="eval">重置</button>
           <div class="toolbar-spacer"></div>
           <div class="toolbar-text" data-toolbar-model="eval">DNSMOS / NISQA + 信号分析</div>
         </div>
@@ -2087,8 +2087,8 @@ tbody tr:hover td{
         <div class="shell-toolbar">
           <button class="ghost-btn" data-upload-trigger="analysis:single">单文件分析</button>
           <button class="ghost-btn" data-scene-trigger="analysis:compare" data-compare-btn="analysis">对比分析</button>
-          <button class="ghost-btn">导出结果</button>
-          <button class="ghost-btn">重置</button>
+          <button class="ghost-btn" data-export-trigger="analysis">导出结果</button>
+          <button class="ghost-btn" data-reset-trigger="analysis">重置</button>
           <div class="toolbar-spacer"></div>
           <div class="toolbar-text" data-toolbar-model="analysis">AudioBox Aesthetics + 信号分析</div>
         </div>
@@ -2441,11 +2441,11 @@ tbody tr:hover td{
       <div class="shell">
         <div class="history-toolbar">
           <div class="history-filters">
-            <button class="small-btn active">全部</button>
-            <button class="small-btn">纯人声评测</button>
-            <button class="small-btn">综合音频分析</button>
-            <button class="small-btn">自由对比</button>
-            <button class="small-btn">基准对比</button>
+            <button class="small-btn active" data-history-filter="all">全部</button>
+            <button class="small-btn" data-history-filter="eval">纯人声评测</button>
+            <button class="small-btn" data-history-filter="analysis">综合音频分析</button>
+            <button class="small-btn" data-history-filter="compare-free">自由对比</button>
+            <button class="small-btn" data-history-filter="compare-base">基准对比</button>
           </div>
           <div class="toolbar-spacer"></div>
           <div class="fake-input history-search">搜索文件 / 模型 / 日期</div>
@@ -2459,7 +2459,7 @@ tbody tr:hover td{
                   <h3>2026-05-15 14:20 · 综合音频分析</h3>
                   <p>主播测试_慢歌_take03.mov · AudioBox Aesthetics · 单文件</p>
                 </div>
-                <button class="small-btn">查看详情</button>
+                <button class="small-btn" data-history-detail="sample-analysis-single">查看详情</button>
               </div>
               <div class="timeline-tags">
                 <span class="meta-pill">PQ 7.8</span>
@@ -2474,7 +2474,7 @@ tbody tr:hover td{
                   <h3>2026-05-15 11:08 · 纯人声评测</h3>
                   <p>meeting_room_take_07.wav · DNSMOS · 单文件</p>
                 </div>
-                <button class="small-btn">查看详情</button>
+                <button class="small-btn" data-history-detail="sample-eval-single">查看详情</button>
               </div>
               <div class="timeline-tags">
                 <span class="meta-pill">OVRL 3.82</span>
@@ -2489,7 +2489,7 @@ tbody tr:hover td{
                   <h3>2026-05-14 19:46 · 纯人声评测对比</h3>
                   <p>call_raw.wav / denoise_v1.wav / denoise_v2.wav / eq_mix.wav</p>
                 </div>
-                <button class="small-btn">查看详情</button>
+                <button class="small-btn" data-history-detail="sample-eval-compare">查看详情</button>
               </div>
               <div class="timeline-tags">
                 <span class="meta-pill">4 组对比</span>
@@ -2504,7 +2504,7 @@ tbody tr:hover td{
                   <h3>2026-05-14 16:12 · 综合音频分析对比</h3>
                   <p>rough_mix.wav / master_v1.wav / master_v2.wav / stream_cut.mov</p>
                 </div>
-                <button class="small-btn">查看详情</button>
+                <button class="small-btn" data-history-detail="sample-analysis-compare">查看详情</button>
               </div>
               <div class="timeline-tags">
                 <span class="meta-pill">4 组对比</span>
@@ -2554,15 +2554,15 @@ tbody tr:hover td{
               <div class="setting-list">
                 <div class="setting-row">
                   <div><strong>自动重采样</strong><span>按模型输入要求自动处理采样率。</span></div>
-                  <div class="toggle on"></div>
+                  <div class="toggle on" data-setting-toggle="preprocess-resample"></div>
                 </div>
                 <div class="setting-row">
                   <div><strong>自动转单声道</strong><span>按模型输入要求自动处理声道。</span></div>
-                  <div class="toggle on"></div>
+                  <div class="toggle on" data-setting-toggle="preprocess-to-mono"></div>
                 </div>
                 <div class="setting-row">
                   <div><strong>视频自动提取音轨</strong><span>上传视频时自动抽取音频。</span></div>
-                  <div class="toggle on"></div>
+                  <div class="toggle on" data-setting-toggle="preprocess-extract-audio"></div>
                 </div>
               </div>
             </div>
@@ -2572,11 +2572,11 @@ tbody tr:hover td{
               <div class="setting-list">
                 <div class="setting-row">
                   <div><strong>默认导出格式</strong><span>结果详情页默认导出格式。</span></div>
-                  <div class="fake-select">CSV + JSON</div>
+                  <div class="fake-select" data-setting-value="export-format">CSV + JSON</div>
                 </div>
                 <div class="setting-row">
                   <div><strong>历史保留周期</strong><span>历史任务的默认保留时间。</span></div>
-                  <div class="fake-select">180 天</div>
+                  <div class="fake-select" data-setting-value="history-retention-days">180 天</div>
                 </div>
               </div>
             </div>

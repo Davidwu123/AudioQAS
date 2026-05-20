@@ -123,7 +123,7 @@
       },
       nisqa: {
         metricLabel: "整体质量",
-        metricKey: "MOS",
+        metricKey: "OVRL",
         modelName: "NISQA",
         groups: [
           { key: "A", file: "call_raw.wav", inputText: "call_raw.wav<br>原始人声样本", score: 2.84, sig: 2.93, bak: 2.68, noise: 2.52, lufs: -13.2, lra: 10.8, peak: -0.1, clipping: 3, thd: 1.2, snr: 14.2, pipeline: "原始文件 → 转单声道 → 保持 48kHz → NISQA", decision: "原始参考版本", rationale: "整体质量和噪声维度都偏低，适合作为清晰的原始基线。" },
@@ -171,7 +171,7 @@
           ["优点", "维度更多，便于拆解噪声、连续性、染色和响度问题"],
           ["局限", "推理更重，仍不适合强混合内容"],
           ["原理", "无参考语音质量预测"],
-          ["指标", "MOS=整体质量，Noisiness/Coloration/Discontinuity/Loudness 为分维度"],
+          ["指标", "OVRL=整体质量，NOI=噪声度，DIS=连续性，COL=染色度，LOUD=响度"],
         ],
         toolbar: "NISQA / DNSMOS + 信号分析",
         docLabel: "当前模型：NISQA",
@@ -206,44 +206,6 @@
     return compareData[kind];
   }
 
-  function getModelLabel(kind, models) {
-    const dataset = getCompareDataset(kind, models);
-    return dataset.modelName;
-  }
-
-  function getVisibleGroupsByCount(kind, groupCount, models) {
-    const dataset = getCompareDataset(kind, models);
-    return dataset.groups.slice(0, groupCount);
-  }
-
-  function computeComparisonData(kind, visibleGroups, compareState, models) {
-    const dataset = getCompareDataset(kind, models);
-    if (!visibleGroups.length) {
-      return {
-        dataset,
-        visibleGroups: [],
-        baseGroup: null,
-        byScore: [],
-        bestOverall: null,
-        byDelta: [],
-        bestDelta: null,
-      };
-    }
-    const normalizedState = { ...compareState };
-    if (!visibleGroups.some((group) => group.key === normalizedState.base)) {
-      normalizedState.base = visibleGroups[0].key;
-    }
-    const baseGroup = visibleGroups.find((group) => group.key === normalizedState.base) || visibleGroups[0];
-    const byScore = [...visibleGroups].sort((a, b) => b.score - a.score);
-    const bestOverall = byScore[0];
-    const byDelta = [...visibleGroups]
-      .filter((group) => group.key !== baseGroup.key)
-      .map((group) => ({ ...group, delta: group.score - baseGroup.score }))
-      .sort((a, b) => b.delta - a.delta);
-    const bestDelta = byDelta[0] || { ...baseGroup, delta: 0 };
-    return { dataset, visibleGroups, baseGroup, byScore, bestOverall, byDelta, bestDelta, compareState: normalizedState };
-  }
-
   function formatSigned(value, digits) {
     const safeDigits = digits == null ? 2 : digits;
     return `${value >= 0 ? "+" : ""}${value.toFixed(safeDigits)}`;
@@ -262,6 +224,29 @@
   }
 
   function buildTraceText(result) {
+    if (Array.isArray(result.pipeline_steps) && result.pipeline_steps.length > 0) {
+      const mapping = {
+        source_video: "原始视频",
+        source_audio: "原始文件",
+        extract_audio: "抽取音轨",
+        to_mono: "转单声道",
+        resample_16k: "重采样到 16kHz",
+        keep_48k: "保持 48kHz",
+        passthrough: "直接使用原始音频",
+      };
+      const modelLabel = result.model_name === "AudioBox-Aesthetics" ? "AudioBox Aesthetics" : result.model_name;
+      const labels = result.pipeline_steps.map((step) => mapping[step] || step);
+      const settings = result.preprocess_settings || {};
+      const disabledHints = [];
+      if (settings.extract_audio === false) disabledHints.push("已关闭自动提取音轨");
+      if (settings.to_mono === false) disabledHints.push("已关闭自动转单声道");
+      if (settings.resample === false) disabledHints.push("已关闭自动重采样");
+      const trace = [...labels, `送入 ${modelLabel}`].join(" → ");
+      if (result.pipeline_steps.length <= 2 && disabledHints.length > 0) {
+        return `${trace}（${disabledHints.join("，")}）`;
+      }
+      return trace;
+    }
     const source = String(result.file_path || "").match(/\.(mp4|mkv|avi|mov|wmv|flv)$/i) ? "原始视频" : "原始文件";
     const steps = [source];
     if (source === "原始视频") steps.push("抽取音轨");
@@ -357,7 +342,7 @@
         { key: "noise", label: "噪声感知", sub: "NOI" },
         { key: "sig", label: "连续性", sub: "DIS" },
         { key: "bak", label: "染色感", sub: "COL" },
-        { key: "loud", label: "响度", sub: "Loudness" },
+        { key: "loud", label: "响度", sub: "LOUD" },
       ];
     }
     return detailColumns[page][view].filter((column) => !["group", "decision", "delta", "rank"].includes(column.key));
@@ -370,10 +355,11 @@
   }
 
   function buildSingleDetailCells(page, row, view, modelKey) {
+    const domain = page === "eval" ? "speech" : "analysis";
     return getSingleDetailColumns(page, view, modelKey)
       .map((column) => {
         const rawValue = row[column.key];
-        const cls = getColumnClass(column.key, rawValue);
+        const cls = getColumnClass(column.key, rawValue, domain);
         return `<td${cls ? ` class="${cls}"` : ""}>${formatCellValue(column.key, rawValue)}</td>`;
       })
       .join("");
@@ -400,6 +386,7 @@
         lufs: item.task.signal?.metrics?.LUFS?.value ?? null,
         lra: item.task.signal?.metrics?.LRA?.value ?? null,
         thd: item.task.signal?.metrics?.THD?.value ?? null,
+        snr: item.task.signal?.metrics?.SNR?.value ?? null,
         stereo: item.task.signal?.metrics?.Stereo?.value ?? null,
         delta: item.delta_from_base ?? 0,
         rationale: item.rank === 1 ? "综合表现更稳，适合作为当前首选版本。" : "作为当前对照组保留复核价值。",
@@ -418,6 +405,20 @@
       .map((group) => ({ ...group, delta: roundDelta(group.score - (base?.score ?? 0)) }))
       .sort((a, b) => b.delta - a.delta);
     const best = mode === "base" ? (byDelta[0] || sorted[0]) : sorted[0];
+    const altHeadline = !best
+      ? ""
+      : best.delta > 0
+        ? `${best.key} 比基准 ${base?.key || baseKey} 更好`
+        : best.delta === 0
+          ? `${best.key} 与基准 ${base?.key || baseKey} 基本持平`
+          : `当前基准 ${base?.key || baseKey} 仍然更好`;
+    const altReason = !best
+      ? ""
+      : best.delta > 0
+        ? `${best.file} 比基准 ${base?.key || baseKey} 更好，分差 ${formatSigned(best.delta)}。`
+        : best.delta === 0
+          ? `${best.file} 与基准 ${base?.key || baseKey} 基本持平，分差 ${formatSigned(best.delta)}。`
+          : `${best.file} 比基准 ${base?.key || baseKey} 更差，分差 ${formatSigned(best.delta)}。`;
     return {
       best,
       baseGroup: base,
@@ -429,9 +430,8 @@
         peak: best ? best.peak.toFixed(1) : "-",
         clipping: best ? String(best.clipping) : "-",
       },
-      altReason: best
-        ? `相对 ${base?.key || baseKey}，${best.file} 的表现提升最明显，适合作为当前优先版本。`
-        : "",
+      altHeadline,
+      altReason,
     };
   }
 
@@ -447,12 +447,15 @@
     return Number(value).toFixed(1);
   }
 
-  function getStatusClass(kind, value) {
+  function getStatusClass(kind, value, domain) {
     if (kind === "score") {
-      if (value >= 7.5 || value >= 4.5) return "status-excellent";
-      if (value >= 6.8 || value >= 4.0) return "status-good";
-      if (value >= 5.5 || value >= 3.0) return "status-fair";
-      if (value >= 2.0) return "status-poor";
+      const thresholds = domain === "analysis"
+        ? { excellent: 8.0, good: 6.0, fair: 4.0, poor: 2.0 }
+        : { excellent: 4.5, good: 4.0, fair: 3.0, poor: 2.0 };
+      if (value >= thresholds.excellent) return "status-excellent";
+      if (value >= thresholds.good) return "status-good";
+      if (value >= thresholds.fair) return "status-fair";
+      if (value >= thresholds.poor) return "status-poor";
       return "status-bad";
     }
     if (kind === "lufs") return value <= -15 ? "status-good" : value <= -14 ? "status-fair" : "status-warn";
@@ -468,11 +471,11 @@
       return [
         { key: "group", label: "组别", sub: "Group" },
         { key: "file", label: "文件", sub: "File" },
-        { key: "score", label: "整体质量", sub: "MOS" },
-        { key: "noise", label: "噪声感知", sub: "Noisiness" },
-        { key: "sig", label: "连续性", sub: "Discontinuity" },
-        { key: "bak", label: "染色感", sub: "Coloration" },
-        { key: "loud", label: "响度", sub: "Loudness" },
+        { key: "score", label: "整体质量", sub: "OVRL" },
+        { key: "noise", label: "噪声感知", sub: "NOI" },
+        { key: "sig", label: "连续性", sub: "DIS" },
+        { key: "bak", label: "染色感", sub: "COL" },
+        { key: "loud", label: "响度", sub: "LOUD" },
         { key: "rank", label: "排序", sub: "Rank" },
       ];
     }
@@ -501,8 +504,8 @@
     return String(value);
   }
 
-  function getColumnClass(columnKey, value) {
-    if (["score", "sig", "bak", "noise", "loud", "ce", "cu", "pc"].includes(columnKey)) return `mono ${getStatusClass("score", value)}`;
+  function getColumnClass(columnKey, value, domain) {
+    if (["score", "sig", "bak", "noise", "loud", "ce", "cu", "pc"].includes(columnKey)) return `mono ${getStatusClass("score", value, domain)}`;
     if (columnKey === "lufs") return `mono ${getStatusClass("lufs", value)}`;
     if (columnKey === "peak") return `mono ${getStatusClass("peak", value)}`;
     if (columnKey === "clipping") return `mono ${getStatusClass("clipping", value)}`;
@@ -515,7 +518,7 @@
     return "";
   }
 
-  function buildDetailCell(columnKey, group, ctx) {
+  function buildDetailCell(columnKey, group, ctx, domain) {
     const delta = ctx.delta;
     const rank = ctx.rank;
     if (columnKey === "group") return `<td><strong>${group.key}</strong></td>`;
@@ -523,7 +526,7 @@
     if (columnKey === "pipeline") return `<td class="hint">${group.pipeline}</td>`;
     if (columnKey === "decision") return `<td>${group.decision}</td>`;
     const rawValue = columnKey === "delta" ? delta : columnKey === "rank" ? rank : group[columnKey];
-    const cls = getColumnClass(columnKey, rawValue);
+    const cls = getColumnClass(columnKey, rawValue, domain);
     return `<td${cls ? ` class="${cls}"` : ""}>${formatCellValue(columnKey, rawValue)}</td>`;
   }
 
@@ -535,9 +538,6 @@
     compareData,
     modelContent,
     getCompareDataset,
-    getModelLabel,
-    getVisibleGroupsByCount,
-    computeComparisonData,
     formatSigned,
     formatScore,
     formatChannels,

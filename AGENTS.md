@@ -57,3 +57,14 @@ npm run test:web-preview
 - Rendering logic belongs in `design/web-preview-app.js`
 - `design/web-preview.html` should remain thin
 - Any business/display logic change should be covered by tests
+
+## Review Checklist
+
+- Review changes in this order:
+  1. behavior correctness
+  2. result/data-field semantic consistency
+  3. duplicated logic, unused dependencies, and boundary leakage
+  4. test coverage for both runnable behavior and semantic correctness
+- Do not stop at "tests pass" or "page renders normally". If a field name, trace value, or preprocessing flag is semantically inaccurate, treat it as a bug.
+- When refactoring shared logic, verify all callers keep the same product meaning, not just the same execution path.
+- When removing desktop-era code or dependencies, confirm there is no remaining runtime import or documented product dependency before deleting them from requirements or docs.

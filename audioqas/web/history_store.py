@@ -5,6 +5,10 @@ import os
 from typing import Protocol
 from pathlib import Path
 
+from audioqas.logging import get_logger, set_event
+
+logger = get_logger(__name__)
+
 
 class HistoryStore(Protocol):
     def list_items(self) -> list[dict]:
@@ -38,11 +42,23 @@ class FileHistoryStore:
 
     def _read(self) -> list[dict]:
         if not self._path.exists():
+            with set_event("history_read_empty"):
+                logger.info("history_read_empty path=%s", self._path)
             return []
-        return json.loads(self._path.read_text(encoding="utf-8"))
+        try:
+            items = json.loads(self._path.read_text(encoding="utf-8"))
+            with set_event("history_read_succeeded"):
+                logger.info("history_read_succeeded path=%s count=%s", self._path, len(items))
+            return items
+        except json.JSONDecodeError:
+            with set_event("history_read_fallback"):
+                logger.warning("history_read_fallback path=%s reason=invalid_json", self._path)
+            return []
 
     def _write(self, items: list[dict]) -> None:
         self._path.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+        with set_event("history_write_succeeded"):
+            logger.info("history_write_succeeded path=%s count=%s", self._path, len(items))
 
     def list_items(self) -> list[dict]:
         return self._read()
@@ -57,5 +73,6 @@ class FileHistoryStore:
 
 
 def default_history_store() -> FileHistoryStore:
-    root = Path(os.environ.get("AUDIOQAS_WEB_STATE_DIR", ".tmp/web_state"))
+    default_root = str(Path(__file__).resolve().parents[2] / ".tmp" / "web_state")
+    root = Path(os.environ.get("AUDIOQAS_WEB_STATE_DIR", default_root))
     return FileHistoryStore(root / "history.json")

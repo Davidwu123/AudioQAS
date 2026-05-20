@@ -135,3 +135,52 @@ def test_evaluate_compare_returns_rank_and_delta():
     item_b = next(item for item in result.items if item.key == "B")
     assert item_b.rank >= 1
     assert item_b.delta_from_base is not None
+
+
+def test_evaluate_single_logs_task_events(tmp_path):
+    from audioqas.logging import setup_logging
+
+    setup_logging(log_dir=tmp_path / "log", level="DEBUG", max_mb=1, backup_count=2)
+    service = make_service()
+
+    service.evaluate_single(domain=EvalDomain.SPEECH, model_key="dnsmos", file_path="speech.wav")
+
+    text = (tmp_path / "log" / "audioqas.log").read_text(encoding="utf-8")
+    assert "task_started" in text
+    assert "task_finished" in text
+
+
+def test_evaluate_single_debug_logs_include_model_result_summary(tmp_path):
+    from audioqas.logging import setup_logging
+
+    setup_logging(log_dir=tmp_path / "log", level="DEBUG", max_mb=1, backup_count=2)
+    service = make_service()
+
+    service.evaluate_single(domain=EvalDomain.SPEECH, model_key="dnsmos", file_path="speech.wav")
+
+    text = (tmp_path / "log" / "audioqas.log").read_text(encoding="utf-8")
+    assert "model_result_ready" in text
+    assert "signal_result_ready" in text
+
+
+def test_evaluate_single_reuses_existing_request_id(tmp_path):
+    from audioqas.logging import log_context, setup_logging
+
+    setup_logging(log_dir=tmp_path / "log", level="DEBUG", max_mb=1, backup_count=2)
+    service = make_service()
+
+    with log_context(request_id="req_ui_test_001", scene="single"):
+        service.evaluate_single(domain=EvalDomain.SPEECH, model_key="dnsmos", file_path="speech.wav")
+
+    text = (tmp_path / "log" / "audioqas.log").read_text(encoding="utf-8")
+    assert "[req_ui_test_001][single][task_started]" in text
+    assert "req_task_" not in text
+
+
+def test_evaluate_single_supports_default_model_switch_from_settings():
+    service = make_service()
+
+    result = service.evaluate_single(domain=EvalDomain.SPEECH, model_key="nisqa", file_path="speech.wav")
+
+    assert result.model.model_key == "nisqa"
+    assert result.model.result["model_name"] == "NISQA"

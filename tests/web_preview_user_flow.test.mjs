@@ -625,6 +625,9 @@ test("speech single-file dnsmos flow renders preview-aligned result blocks", asy
     await app.uploadSingle("eval", "demo.wav");
 
     assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/upload"), true);
+    const uploadCall = app.fetchCalls.filter((call) => call.url === "/api/evaluate/upload").at(-1);
+    assert.equal(typeof uploadCall?.options?.headers?.["X-Request-Id"], "string");
+    assert.equal(uploadCall?.options?.headers?.["X-Request-Id"].startsWith("req_eval_single_"), true);
     assert.equal(app.text("[data-eval-file-summary]"), "12.3s · 16000Hz · Mono · 当前模型 DNSMOS");
     assert.equal(app.text("[data-eval-advice]"), "建议先整理峰值和响度，再复评。");
     assert.equal(app.text("[data-eval-trace]"), "原始文件 → 重采样到 16kHz → 送入 DNSMOS");
@@ -712,6 +715,9 @@ test("speech compare free mode renders recommended version and ranking", async (
     });
 
     assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/compare-upload"), true);
+    const compareCall = app.fetchCalls.filter((call) => call.url === "/api/evaluate/compare-upload").at(-1);
+    assert.equal(typeof compareCall?.options?.headers?.["X-Request-Id"], "string");
+    assert.equal(compareCall?.options?.headers?.["X-Request-Id"].startsWith("req_eval_compare_"), true);
     assert.equal(app.text('[data-mode-root="eval"] .mode-chip.active'), "自由对比");
     assert.match(app.text('[data-compare-summary="eval"] strong'), /推荐版本 B/);
     assert.equal(app.text('[data-compare-summary="eval"] .compare-reason').includes("综合表现更稳"), true);
@@ -746,17 +752,18 @@ test("speech compare base mode recomputes summary relative to selected base grou
     await waitFor(app.window, () => app.text('[data-compare-ranking="eval"] .ranking-list').includes("vs A +0.7"), "eval base mode ranking A");
 
     assert.equal(app.text('[data-mode-root="eval"] .mode-chip.active'), "基准对比");
-    assert.match(app.text('[data-compare-summary="eval"] .compare-summary-alt strong'), /推荐版本 B/);
-    assert.equal(app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("相对基准 A 提升最明显"), true);
+    assert.match(app.text('[data-compare-summary="eval"] .compare-summary-alt strong'), /B 比基准 A 更好/);
+    assert.equal(app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("B 比基准 A 更好"), true);
     assert.equal(app.text('[data-compare-ranking="eval"] .ranking-list').includes("vs A +0.7"), true);
     await app.click('[data-compare-table="eval"] [data-detail-view="full"]');
     assert.equal(app.text('[data-compare-table="eval"] thead tr').includes("相对基准差值"), true);
 
     await app.click('[data-base-root="eval"] .base-pill:nth-child(2)');
-    await waitFor(app.window, () => app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("相对基准 B 提升最明显"), "eval base mode summary B");
+    await waitFor(app.window, () => app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("当前基准 B 仍然更好"), "eval base mode summary B");
     assert.equal(app.text('[data-mode-root="eval"] .mode-chip.active'), "基准对比");
-    assert.equal(app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("相对基准 B 提升最明显"), true);
+    assert.equal(app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("当前基准 B 仍然更好"), true);
     assert.equal(app.text('[data-compare-ranking="eval"] .ranking-list').includes("vs B -0.70"), true);
+    assert.equal(app.text('[data-compare-ranking="eval"] .ranking-list').includes("比基准更差"), true);
     assert.equal(app.text('[data-compare-table="eval"] tbody tr').includes("原始文件 → 重采样到 16kHz → 送入 DNSMOS"), true);
   } finally {
     await app.close();
@@ -1071,6 +1078,34 @@ test("failed single upload triggers alert copy containing 本机评测失败", a
     assert.equal(app.alerts.length, 1);
     assert.match(app.alerts[0], /本机评测失败/);
     assert.match(app.alerts[0], /页面渲染失败：Upload evaluate failed: 500/);
+    assert.match(app.alerts[0], /请求 ID：req_eval_single_/);
+  } finally {
+    await app.close();
+  }
+});
+
+test("single upload shows readable preprocess-disabled error when backend rejects auto processing", async () => {
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": [],
+      "/api/evaluate/upload": {
+        ok: false,
+        status: 400,
+        async json() {
+          return {
+            code: "mono_convert_disabled",
+            stage: "preprocess",
+            message: "Automatic mono conversion is disabled for the current settings.",
+          };
+        },
+      },
+    },
+  });
+  try {
+    await app.uploadSingle("eval", "broken.wav");
+
+    assert.equal(app.alerts.length, 1);
+    assert.match(app.alerts[0], /自动转单声道已关闭/);
   } finally {
     await app.close();
   }
@@ -1088,10 +1123,10 @@ test("single upload flow shows staged progress labels in order", async () => {
     const progressLog = app.captureTextAssignments('[data-page="eval"] [data-scene="single"] .progress-label');
     const uploadTask = app.uploadSingle("eval", "demo.wav", { waitForCompletion: false });
 
-    await waitFor(app.window, () => progressLog.values.includes("模型评测中 60%"), "single upload progress reaches model stage");
+    await waitFor(app.window, () => progressLog.values.some((value) => value.startsWith("模型评测中 60%")), "single upload progress reaches model stage");
     uploadResponse.resolve();
     await uploadTask;
-    await waitFor(app.window, () => progressLog.values.includes("100%"), "single upload progress reaches 100%");
+    await waitFor(app.window, () => progressLog.values.some((value) => value.startsWith("100%")), "single upload progress reaches 100%");
     progressLog.disconnect();
 
     assertOrderedIncludes(progressLog.values, [
@@ -1106,10 +1141,164 @@ test("single upload flow shows staged progress labels in order", async () => {
   }
 });
 
+test("single export button downloads current result as json", async () => {
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": [],
+      "/api/evaluate/upload": buildJsonResponse(buildDnsmosSinglePayload()),
+    },
+  });
+  try {
+    const downloadUrls = [];
+    const originalCreateObjectURL = app.window.URL.createObjectURL;
+    const originalRevokeObjectURL = app.window.URL.revokeObjectURL;
+    app.window.URL.createObjectURL = () => {
+      const url = "blob:test-export";
+      downloadUrls.push(url);
+      return url;
+    };
+    app.window.URL.revokeObjectURL = (url) => {
+      downloadUrls.push(`revoked:${url}`);
+    };
+    const clickedDownloads = [];
+    const originalAnchorClick = app.window.HTMLAnchorElement.prototype.click;
+    app.window.HTMLAnchorElement.prototype.click = function click() {
+      clickedDownloads.push({ href: this.href, download: this.download });
+    };
+
+    await app.uploadSingle("eval", "demo.wav");
+    await app.click('[data-export-trigger="eval"]');
+
+    assert.equal(downloadUrls.includes("blob:test-export"), true);
+    assert.equal(downloadUrls.includes("revoked:blob:test-export"), true);
+    assert.equal(clickedDownloads.length, 2);
+    assert.equal(clickedDownloads[0].href, "blob:test-export");
+    assert.equal(clickedDownloads[0].download, "audioqas_eval_single.json");
+    assert.equal(clickedDownloads[1].download, "audioqas_eval_single.csv");
+
+    app.window.URL.createObjectURL = originalCreateObjectURL;
+    app.window.URL.revokeObjectURL = originalRevokeObjectURL;
+    app.window.HTMLAnchorElement.prototype.click = originalAnchorClick;
+  } finally {
+    await app.close();
+  }
+});
+
+test("reset button clears current page runtime result", async () => {
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": [],
+      "/api/evaluate/upload": buildJsonResponse(buildDnsmosSinglePayload()),
+    },
+  });
+  try {
+    await app.uploadSingle("eval", "demo.wav");
+    assert.equal(app.text("[data-eval-file-summary]"), "12.3s · 16000Hz · Mono · 当前模型 DNSMOS");
+
+    await app.click('[data-reset-trigger="eval"]');
+
+    assert.equal(app.text("[data-eval-file-summary]"), "45.3s · 48kHz · Stereo · 当前模型 DNSMOS");
+    assert.equal(app.text('[data-page="eval"] .card-title'), "meeting_room_take_07.wav");
+    assert.equal(app.text('[data-page="eval"] [data-scene="single"] .progress-label'), "0%");
+  } finally {
+    await app.close();
+  }
+});
+
+test("history filter buttons actually filter runtime cards", async () => {
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": buildJsonResponse([
+        {
+          id: "task-1",
+          timestamp: "2026-05-19 10:30",
+          page_key: "eval",
+          page_title: "纯人声评测",
+          scene: "single",
+          model_label: "DNSMOS",
+          file_summary: "meeting_take.wav",
+          summary_metrics: ["OVRL 4.12"],
+          trace_summary: "Mono → 16kHz",
+        },
+        {
+          id: "task-2",
+          timestamp: "2026-05-19 11:05",
+          page_key: "analysis",
+          page_title: "综合音频分析",
+          scene: "compare",
+          compare_mode: "base",
+          model_label: "AudioBox Aesthetics",
+          file_summary: "mix_v2.mov",
+          summary_metrics: ["4 组对比", "最佳 B"],
+          trace_summary: "抽取音轨 → Mono",
+        },
+      ]),
+    },
+  });
+  try {
+    await app.click('[data-page="history"]');
+    assert.equal(app.texts("[data-history-stack] .timeline-card").length, 2);
+
+    await app.click('[data-history-filter="eval"]');
+    assert.equal(app.texts("[data-history-stack] .timeline-card").length, 1);
+    assert.equal(app.text("[data-history-stack] .timeline-card:first-child p"), "meeting_take.wav · DNSMOS · 单文件");
+
+    await app.click('[data-history-filter="compare-base"]');
+    assert.equal(app.texts("[data-history-stack] .timeline-card").length, 1);
+    assert.equal(app.text("[data-history-stack] .timeline-card:first-child p"), "mix_v2.mov · AudioBox Aesthetics · 对比");
+  } finally {
+    await app.close();
+  }
+});
+
+test("history detail button loads backend detail and shows alert summary", async () => {
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": buildJsonResponse([
+        {
+          id: "task-1",
+          timestamp: "2026-05-19 10:30",
+          page_key: "eval",
+          page_title: "纯人声评测",
+          scene: "single",
+          model_label: "DNSMOS",
+          file_summary: "meeting_take.wav",
+          summary_metrics: ["OVRL 4.12"],
+          trace_summary: "Mono → 16kHz",
+        },
+      ]),
+      "/api/history/task-1": buildJsonResponse({
+        id: "task-1",
+        timestamp: "2026-05-19 10:30",
+        page_title: "纯人声评测",
+        file_summary: "meeting_take.wav",
+        model_label: "DNSMOS",
+        scene: "single",
+        trace_summary: "Mono → 16kHz",
+        detail: {
+          domain: "speech",
+          file_path: "meeting_take.wav",
+        },
+      }),
+    },
+  });
+  try {
+    await app.click('[data-page="history"]');
+    await app.click('[data-history-detail="task-1"]');
+
+    assert.equal(app.fetchCalls.some((call) => call.url === "/api/history/task-1"), true);
+    assert.equal(app.alerts.length > 0, true);
+    assert.match(app.alerts.at(-1), /meeting_take\.wav/);
+    assert.match(app.alerts.at(-1), /DNSMOS/);
+  } finally {
+    await app.close();
+  }
+});
+
 function assertOrderedIncludes(values, expectedSequence) {
   let index = 0;
   for (const value of values) {
-    if (value === expectedSequence[index]) index += 1;
+    if (value.startsWith(expectedSequence[index])) index += 1;
     if (index === expectedSequence.length) return;
   }
   assert.fail(`Expected ordered sequence ${expectedSequence.join(" -> ")}, got ${values.join(" | ")}`);
