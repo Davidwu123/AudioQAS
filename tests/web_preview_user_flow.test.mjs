@@ -631,7 +631,10 @@ test("speech single-file dnsmos flow renders preview-aligned result blocks", asy
     assert.equal(app.text("[data-eval-file-summary]"), "12.3s · 16000Hz · Mono · 当前模型 DNSMOS");
     assert.equal(app.text("[data-eval-advice]"), "建议先整理峰值和响度，再复评。");
     assert.equal(app.text("[data-eval-trace]"), "原始文件 → 重采样到 16kHz → 送入 DNSMOS");
-    assert.deepEqual(app.texts("[data-eval-model-grid] .score-card .label"), ["OVRL", "SIG", "BAK"]);
+    assert.equal(app.document.querySelector('[data-page="eval"] .pill-grade')?.classList.contains("status-good"), true);
+    assert.match(app.document.querySelector('[data-page="eval"] .score-card .bar span')?.getAttribute("style") || "", /var\(--good\)/);
+    assert.deepEqual(app.texts("[data-eval-model-grid] .score-card .label"), ["整体听感 · OVRL", "语音清晰度 · SIG", "背景干净度 · BAK", "处理建议"]);
+    assert.equal(app.texts('[data-page="eval"] .metric .state')[0], "需关注");
     assert.equal(app.text('[data-single-detail-table="eval"] thead tr').includes("整体听感"), true);
     assert.equal(app.text('[data-single-detail-table="eval"] tbody tr').includes("4.2"), true);
   } finally {
@@ -653,7 +656,7 @@ test("speech single-file nisqa flow renders OVRL NOI DIS COL LOUD and supports d
     assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/upload"), true);
     assert.equal(app.text("[data-eval-file-summary]"), "18.4s · 48000Hz · Stereo · 当前模型 NISQA");
     assert.equal(app.text("[data-eval-trace]"), "原始文件 → 转单声道 → 保持 48kHz → 送入 NISQA");
-    assert.deepEqual(app.texts("[data-eval-model-grid] .score-card .label"), ["OVRL", "NOI", "DIS", "COL", "LOUD"]);
+    assert.deepEqual(app.texts("[data-eval-model-grid] .score-card .label"), ["整体质量 · OVRL", "噪声感知 · NOI", "连续性 · DIS", "染色感 · COL", "响度 · LOUD"]);
     assert.equal(app.text('[data-single-detail-table="eval"] thead tr').includes("整体质量"), true);
     assert.equal(app.text('[data-single-detail-table="eval"] tbody tr').includes("4.3"), true);
 
@@ -684,7 +687,8 @@ test("analysis single-file audiobox flow renders PQ CE CU PC and supports detail
     assert.equal(app.text("[data-analysis-file-summary]"), "31.2s · 48000Hz · Mono · 当前模型 AudioBox Aesthetics");
     assert.equal(app.text("[data-analysis-advice]"), "建议先整理峰值和响度，再复核内容完成度。");
     assert.equal(app.text("[data-analysis-trace]"), "原始视频 → 抽取音轨 → 保持 48kHz → 送入 AudioBox Aesthetics");
-    assert.deepEqual(app.texts('[data-page="analysis"] .score-card .label'), ["PQ", "CE", "CU", "PC"]);
+    assert.deepEqual(app.texts('[data-page="analysis"] .score-card .label'), ["制作质量 · PQ", "内容享受 · CE", "内容有用 · CU", "制作复杂度 · PC"]);
+    assert.equal(app.texts('[data-page="analysis"] .metric .desc')[2], "峰值接近上限，建议再留 0.7 dBTP 余量。");
     assert.equal(app.text('[data-single-detail-table="analysis"] thead tr').includes("制作质量"), true);
     assert.equal(app.text('[data-single-detail-table="analysis"] tbody tr').includes("7.8"), true);
 
@@ -721,8 +725,12 @@ test("speech compare free mode renders recommended version and ranking", async (
     assert.equal(app.text('[data-mode-root="eval"] .mode-chip.active'), "自由对比");
     assert.match(app.text('[data-compare-summary="eval"] strong'), /推荐版本 B/);
     assert.equal(app.text('[data-compare-summary="eval"] .compare-reason').includes("综合表现更稳"), true);
+    assert.equal(app.document.querySelectorAll('[data-compare-summary="eval"] .compare-summary-default .compare-kpi span')[0]?.classList.contains("status-excellent"), true);
+    assert.equal(app.document.querySelectorAll('[data-compare-summary="eval"] .compare-summary-default .compare-kpi span')[1]?.classList.contains("status-good"), true);
+    assert.equal(app.document.querySelectorAll('[data-compare-summary="eval"] .compare-summary-default .compare-kpi span')[2]?.classList.contains("status-good"), true);
     assert.equal(app.text('[data-compare-ranking="eval"] .ranking-list').includes("B · b.wav"), true);
     assert.equal(app.text('[data-compare-ranking="eval"] .ranking-list').includes("综合排序第1"), true);
+    assert.equal(app.document.querySelector('[data-compare-ranking="eval"] .ranking-card.top .ranking-score strong')?.classList.contains("status-excellent"), true);
     assert.equal(app.text('[data-compare-table="eval"] [data-base-tag="eval"]'), "自由对比");
     assert.equal(app.text('[data-compare-table="eval"] thead tr').includes("整体听感"), true);
     assert.equal(app.text('[data-compare-table="eval"] tbody').includes("4.6"), true);
@@ -754,6 +762,7 @@ test("speech compare base mode recomputes summary relative to selected base grou
     assert.equal(app.text('[data-mode-root="eval"] .mode-chip.active'), "基准对比");
     assert.match(app.text('[data-compare-summary="eval"] .compare-summary-alt strong'), /B 比基准 A 更好/);
     assert.equal(app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("B 比基准 A 更好"), true);
+    assert.equal(app.document.querySelectorAll('[data-compare-summary="eval"] .compare-summary-alt .compare-kpi span')[0]?.classList.contains("status-good"), true);
     assert.equal(app.text('[data-compare-ranking="eval"] .ranking-list').includes("vs A +0.7"), true);
     await app.click('[data-compare-table="eval"] [data-detail-view="full"]');
     assert.equal(app.text('[data-compare-table="eval"] thead tr').includes("相对基准差值"), true);
@@ -762,6 +771,7 @@ test("speech compare base mode recomputes summary relative to selected base grou
     await waitFor(app.window, () => app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("当前基准 B 仍然更好"), "eval base mode summary B");
     assert.equal(app.text('[data-mode-root="eval"] .mode-chip.active'), "基准对比");
     assert.equal(app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("当前基准 B 仍然更好"), true);
+    assert.equal(app.document.querySelectorAll('[data-compare-summary="eval"] .compare-summary-alt .compare-kpi span')[0]?.classList.contains("status-warn"), true);
     assert.equal(app.text('[data-compare-ranking="eval"] .ranking-list').includes("vs B -0.70"), true);
     assert.equal(app.text('[data-compare-ranking="eval"] .ranking-list').includes("比基准更差"), true);
     assert.equal(app.text('[data-compare-table="eval"] tbody tr').includes("原始文件 → 重采样到 16kHz → 送入 DNSMOS"), true);

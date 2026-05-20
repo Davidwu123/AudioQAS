@@ -129,11 +129,23 @@ test("speech single-file mapping keeps dnsmos primary dimensions", () => {
   const view = preview.buildSingleFileViewModel("eval", payload, "demo.wav");
   assert.equal(view.fileName, "demo.wav");
   assert.equal(view.primaryMetric.key, "OVRL");
-  assert.deepEqual(view.modelCards.map((card) => card.key), ["OVRL", "SIG", "BAK"]);
+  assert.deepEqual(view.modelCards.map((card) => card.key), ["OVRL", "SIG", "BAK", "advice"]);
   assert.equal(view.layoutMode, "default");
   assert.equal(view.adviceText, "建议先整理峰值和响度，再复评。");
   assert.equal(view.detailRow.file, "demo.wav");
   assert.equal(view.traceText, "原始文件 → 重采样到 16kHz → 送入 DNSMOS");
+  assert.equal(view.hero.valueText, "3.80");
+  assert.equal(view.hero.gradeClass, "status-good");
+  assert.match(view.modelCards[0].barStyle, /var\(--good\)/);
+  assert.deepEqual(
+    view.modelCards.map((card) => card.label),
+    ["整体听感 · OVRL", "语音清晰度 · SIG", "背景干净度 · BAK", "处理建议"],
+  );
+  assert.deepEqual(
+    view.signalCards.map((card) => card.label),
+    ["综合响度 · LUFS", "响度范围 · LRA", "真实峰值 · True Peak"],
+  );
+  assert.equal(view.signalCards[0].stateText, "需关注");
 });
 
 test("speech single-file mapping keeps full nisqa dimensions", () => {
@@ -204,6 +216,14 @@ test("analysis single-file mapping includes summary trace and detail row", () =>
   assert.equal(view.traceText, "原始文件 → 保持 48kHz → 送入 AudioBox Aesthetics");
   assert.equal(view.detailRow.file, "mix.mov");
   assert.equal(view.detailRow.score, 7.8);
+  assert.equal(view.hero.valueText, "7.8");
+  assert.equal(view.modelCards[2].gradeClass, "status-excellent");
+  assert.equal(view.signalCards[0].stateClass, "status-warn");
+  assert.deepEqual(
+    view.modelCards.map((card) => card.label),
+    ["制作质量 · PQ", "内容享受 · CE", "内容有用 · CU", "制作复杂度 · PC"],
+  );
+  assert.equal(view.signalCards[2].description, "峰值接近上限，建议再留 0.7 dBTP 余量。");
 });
 
 test("trace text expands speech model preprocessing steps", () => {
@@ -444,6 +464,73 @@ test("runtime compare summary recomputes delta when base group changes", () => {
   assert.equal(summary.byDelta[1].key, "A");
   assert.equal(summary.altHeadline, "当前基准 B 仍然更好");
   assert.match(summary.altReason, /比基准 B 更差/);
+});
+
+test("runtime compare summary keeps preview-style copy across free and base modes", () => {
+  const groups = [
+    {
+      key: "A",
+      file: "a.wav",
+      score: 3.9,
+      peak: -0.9,
+      clipping: 0,
+      delta: 0,
+      rationale: "作为当前对照组保留复核价值。",
+      rank: 2,
+    },
+    {
+      key: "B",
+      file: "b.wav",
+      score: 4.6,
+      peak: -1.4,
+      clipping: 0,
+      delta: 0.7,
+      rationale: "综合表现更稳，适合作为当前首选版本。",
+      rank: 1,
+    },
+  ];
+
+  const freeSummary = preview.buildRuntimeCompareSummary("eval", groups, "free", "A");
+  const baseSummary = preview.buildRuntimeCompareSummary("eval", groups, "base", "A");
+
+  assert.equal(freeSummary.defaultSubline, "`b.wav` 综合表现更稳，适合作为当前首选版本。");
+  assert.equal(baseSummary.altHeadline, "B 比基准 A 更好");
+  assert.equal(baseSummary.altReason, "b.wav 比基准 A 更好，分差 +0.70。");
+});
+
+test("compare ranking and table view models can be shared by preview and runtime renderers", () => {
+  const groups = [
+    {
+      key: "A",
+      file: "a.wav",
+      score: 3.9,
+      peak: -0.9,
+      clipping: 0,
+      delta: 0,
+      rationale: "作为当前对照组保留复核价值。",
+      rank: 2,
+      pipeline: "原始文件 → 重采样到 16kHz → 送入 DNSMOS",
+    },
+    {
+      key: "B",
+      file: "b.wav",
+      score: 4.6,
+      peak: -1.4,
+      clipping: 0,
+      delta: 0.7,
+      rationale: "综合表现更稳，适合作为当前首选版本。",
+      rank: 1,
+      pipeline: "原始文件 → 重采样到 16kHz → 送入 DNSMOS",
+    },
+  ];
+
+  const ranking = preview.buildCompareRankingViewModel("eval", groups, "free", "A");
+  const table = preview.buildCompareTableViewModel("eval", groups, "full", "base", { eval: "dnsmos", analysis: "audiobox" }, "A");
+
+  assert.equal(ranking[0].headline, "B · b.wav");
+  assert.equal(ranking[0].subline, "综合排序第1");
+  assert.equal(table.tag, "基准组 A");
+  assert.match(table.tbodyHtml, /相对基准差值|原始文件 → 重采样到 16kHz → 送入 DNSMOS/);
 });
 
 test("getStatusClass uses separate thresholds for speech and analysis scales", () => {

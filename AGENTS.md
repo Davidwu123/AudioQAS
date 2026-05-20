@@ -68,3 +68,14 @@ npm run test:web-preview
 - Do not stop at "tests pass" or "page renders normally". If a field name, trace value, or preprocessing flag is semantically inaccurate, treat it as a bug.
 - When refactoring shared logic, verify all callers keep the same product meaning, not just the same execution path.
 - When removing desktop-era code or dependencies, confirm there is no remaining runtime import or documented product dependency before deleting them from requirements or docs.
+
+## Execution Mode
+
+- Default to continuous execution once a plan is approved. Do not pause for small confirmations between ordinary implementation steps.
+- When the user states a high-level goal and does not ask for step-by-step confirmation, treat it as goal-driven continuous execution until blocked by a root-level red-line decision, a major direction change, or a plan gap that cannot be resolved safely from repository context.
+- For multi-phase or structural work, write/update the corresponding plan under `docs/superpowers/plans/` first, then execute phase-by-phase against that plan.
+- During execution, only interrupt for confirmation when:
+  1. a root `AGENTS.md` red-line operation is required
+  2. the implementation direction must change in a non-trivial way
+  3. the current plan is blocked by a gap that cannot be resolved safely from repository context
+- Otherwise, keep working autonomously, keep tests up to date, and report progress at meaningful checkpoints instead of asking for routine approval.

@@ -96,21 +96,24 @@ def test_runtime_compare_render_uses_current_selected_base_group():
     text = APP_PATH.read_text(encoding="utf-8")
     assert 'const activeBaseKey = compareState.base || payload.base_key || "A";' in text
     assert "buildRuntimeCompareSummary(kind, items, compareState.mode, activeBaseKey)" in text
-    assert 'summary.querySelector(".compare-summary-alt strong").textContent = compareSummary.altHeadline;' in text
-    assert "vs ${activeBaseKey}" in text
+    assert "buildCompareSummaryViewModel(kind, compareState.mode, activeBaseGroup, sorted[0], best, compareSummary)" in text
+    assert "buildCompareRankingViewModel(kind, displaySorted, compareState.mode, activeBaseKey)" in text
+    assert "buildCompareTableViewModel(kind, displayItems, view, compareState.mode, state.models, activeBaseKey)" in text
+    assert "applyCompareSummary(summary, summaryView, compareState.mode);" in text
 
 
 def test_settings_trace_toggle_drives_result_and_history_visibility():
     text = APP_PATH.read_text(encoding="utf-8")
     assert 'document.querySelectorAll("[data-trace-block]")' in text
     assert 'document.querySelectorAll("[data-history-trace]")' in text
-    assert 'if (key === "trace") settingsState.trace = toggle.classList.contains("on");' in text
+    assert "function toggleSettingAction(" in text
+    assert 'if (key === "trace") runtimeState.settings.trace = isOn;' in text
 
 
 def test_settings_compare_default_drives_compare_scene_mode():
     text = APP_PATH.read_text(encoding="utf-8")
-    assert 'settingsState.compareDefault = settingsState.compareDefault === "free" ? "base" : "free";' in text
-    assert 'if (state[`${kind}Scene`] === "compare") state.compare[kind].mode = settingsState.compareDefault;' in text
+    assert 'runtimeState.settings.compareDefault = runtimeState.settings.compareDefault === "free" ? "base" : "free";' in text
+    assert 'if (state[`${kind}Scene`] === "compare") state.compare[kind].mode = runtimeState.settings.compareDefault;' in text
 
 
 def test_history_runtime_handles_empty_and_error_states():
@@ -118,3 +121,68 @@ def test_history_runtime_handles_empty_and_error_states():
     assert 'const showEmpty = runtimeState.history.status === "success" && items.length === 0;' in text
     assert 'empty.textContent = `历史加载失败：${runtimeState.history.error}`;' in text
     assert 'stack.innerHTML = "";' in text
+
+
+def test_runtime_result_styles_follow_preview_status_semantics():
+    text = APP_PATH.read_text(encoding="utf-8")
+    assert "const view = buildSingleFileViewModel(page, payload, fileName);" in text
+    assert "heroGrade.setAttribute(\"style\", view.hero.gradeStyle);" in text
+    assert "<div class=\"bar\"><span style=\"${card.barStyle}\"></span></div>" in text
+    assert 'background:var(--accent)' not in text
+
+
+def test_single_runtime_render_uses_shared_dom_helper():
+    text = APP_PATH.read_text(encoding="utf-8")
+    assert "function applySingleOverview(" in text
+    assert "function applySingleMetricCards(" in text
+    assert "function applySingleDetailTable(" in text
+    assert text.count("const title = document.querySelector(") <= 1
+
+
+def test_app_layer_continues_shedding_display_semantics():
+    text = APP_PATH.read_text(encoding="utf-8")
+    assert text.count("模型: ") <= 2
+    assert text.count("自由对比") <= 2
+    assert text.count("基准对比") <= 2
+
+
+def test_runtime_state_has_explicit_compare_slice():
+    text = APP_PATH.read_text(encoding="utf-8")
+    assert "compare: {" in text
+    assert "groups:" in text
+    assert "results:" in text
+
+
+def test_runtime_state_has_explicit_settings_slice():
+    text = APP_PATH.read_text(encoding="utf-8")
+    assert "settings: {" in text
+    assert "trace:" in text
+    assert "compareDefault:" in text
+
+
+def test_event_layer_uses_action_helpers_for_settings_and_history():
+    text = APP_PATH.read_text(encoding="utf-8")
+    assert "function applySettingsPayload(" in text
+    assert "function openSingleUploadAction(" in text
+    assert "function changeSceneAction(" in text
+    assert "function changeCompareModeAction(" in text
+    assert "function toggleSettingAction(" in text
+    assert "function updateCompareDefaultAction(" in text
+    assert "function updateExportFormatAction(" in text
+    assert "function updateHistoryRetentionAction(" in text
+    assert "function applyHistoryFilterAction(" in text
+    assert "function showHistoryDetailAction(" in text
+    assert "function exportPageAction(" in text
+    assert "function resetPageAction(" in text
+    assert "function switchModelAction(" in text
+    assert "function toggleDefaultEvalModelAction(" in text
+    assert "function changeCompareDetailViewAction(" in text
+    assert "function changeSingleDetailViewAction(" in text
+    assert "function addCompareGroupAction(" in text
+
+
+def test_compact_five_model_cards_keep_stronger_visual_weight_than_signal_cards():
+    html = HTML_PATH.read_text(encoding="utf-8")
+    assert ".four-col.compact-five .number{" in html
+    assert "font-size:38px;" in html
+    assert "grid-template-columns:repeat(5, minmax(0,1fr));" in html

@@ -25,3 +25,9 @@ def test_web_preview_no_duplicate_local_compare_group_defs():
     html = HTML_PATH.read_text(encoding="utf-8")
     assert html.count("const compareGroupDefs =") == 0
     assert "const state = {" not in html
+
+
+def test_web_preview_html_uses_fresh_asset_version_strategy():
+    html = HTML_PATH.read_text(encoding="utf-8")
+    assert "2026-05-20-architecture-cleanup-1" in html
+    assert "String(Date.now())" in html

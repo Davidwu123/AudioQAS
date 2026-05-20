@@ -11,3 +11,4 @@ dist/
 .worktrees/
 node_modules/
 .tmp
+log/*

@@ -35,6 +35,34 @@
     analysis: ["C", "D", "E", "F"],
   };
 
+  const gradeClassMap = {
+    Excellent: "status-excellent",
+    Good: "status-good",
+    Fair: "status-fair",
+    Poor: "status-poor",
+    Bad: "status-bad",
+  };
+
+  const statusColorVarMap = {
+    "status-excellent": "var(--excellent)",
+    "status-good": "var(--good)",
+    "status-fair": "var(--fair)",
+    "status-poor": "var(--poor)",
+    "status-bad": "var(--bad)",
+    "status-warn": "var(--warn)",
+    "status-accent": "var(--accent)",
+  };
+
+  const gradeBackgroundStyleMap = {
+    "status-excellent": "background:rgba(86,211,100,0.12)",
+    "status-good": "background:rgba(63,185,80,0.12)",
+    "status-fair": "background:rgba(227,179,65,0.12)",
+    "status-poor": "background:rgba(255,158,66,0.14)",
+    "status-bad": "background:rgba(248,81,73,0.14)",
+    "status-warn": "background:rgba(255,158,66,0.14)",
+    "status-accent": "background:rgba(88,166,255,0.14)",
+  };
+
   const detailColumns = {
     eval: {
       metrics: [
@@ -291,14 +319,71 @@
       : "结果已具备继续复评价值，可进入下一步检查。";
   }
 
+  function scoreClassFromGrade(grade) {
+    return gradeClassMap[grade] || "status-fair";
+  }
+
+  function colorVarFromStatusClass(statusClass) {
+    return statusColorVarMap[statusClass] || "var(--accent)";
+  }
+
+  function gradeBackgroundStyle(grade) {
+    const statusClass = scoreClassFromGrade(grade);
+    return gradeBackgroundStyleMap[statusClass] || gradeBackgroundStyleMap["status-accent"];
+  }
+
+  function signalStateClass(grade) {
+    return grade === "Good" ? "status-good" : grade === "Warning" ? "status-warn" : "status-poor";
+  }
+
+  function signalStateText(grade) {
+    return grade === "Good" ? "稳定" : grade === "Warning" ? "需关注" : "存在风险";
+  }
+
+  function signalLabel(key) {
+    const labels = {
+      LUFS: "综合响度 · LUFS",
+      LRA: "响度范围 · LRA",
+      TruePeak: "真实峰值 · True Peak",
+      Clipping: "削波次数 · Clipping",
+      THD: "谐波失真 · THD",
+      SNR: "信噪比 · SNR",
+      Stereo: "声像宽度 · Stereo",
+    };
+    return labels[key] || key;
+  }
+
+  function signalDescription(page, key, metric) {
+    if (page === "eval") {
+      const speechDescriptions = {
+        LUFS: "响度略高，长时间听会偏顶。",
+        LRA: "动态范围比较稳定，适合口播内容。",
+        TruePeak: "峰值接近上限，建议保留更多余量。",
+        Clipping: "没有发现明显削波事件。",
+        THD: "谐波失真较低，没有明显破音风险。",
+      };
+      return speechDescriptions[key] || metric.description;
+    }
+    const analysisDescriptions = {
+      LUFS: "响度略高，平台归一化后可能被压回去。",
+      LRA: "动态范围比较稳定，适合节目成品。",
+      TruePeak: "峰值接近上限，建议再留 0.7 dBTP 余量。",
+      Clipping: "没有发现可见削波事件。",
+      THD: "谐波失真较低，没有明显破音风险。",
+    };
+    return analysisDescriptions[key] || metric.description;
+  }
+
   function buildSingleFileViewModel(page, payload, fileName) {
     const result = payload.model.result;
     const dimensions = result.dimensions || {};
     const signalMetrics = payload.signal?.metrics || {};
+    const isAnalysis = page === "analysis";
     const orderedModelKeys = page === "eval" && payload.model.model_key === "nisqa"
       ? ["OVRL", "NOI", "DIS", "COL", "LOUD"]
       : Object.keys(dimensions);
     const primaryKey = orderedModelKeys.find((key) => dimensions[key]) || Object.keys(dimensions)[0];
+    const primaryMetric = primaryKey ? { key: primaryKey, ...dimensions[primaryKey] } : null;
     const detailRow = {
       file: fileName,
       score: primaryKey ? dimensions[primaryKey]?.score : null,
@@ -318,6 +403,56 @@
       stereo: signalMetrics.Stereo?.value ?? null,
       pipeline: buildTraceText(result),
     };
+    const labelMap = page === "analysis"
+      ? {
+        PQ: "制作质量 · PQ",
+        CE: "内容享受 · CE",
+        CU: "内容有用 · CU",
+        PC: "制作复杂度 · PC",
+      }
+      : payload.model.model_key === "nisqa"
+        ? {
+          OVRL: "整体质量 · OVRL",
+          NOI: "噪声感知 · NOI",
+          DIS: "连续性 · DIS",
+          COL: "染色感 · COL",
+          LOUD: "响度 · LOUD",
+        }
+        : {
+          OVRL: "整体听感 · OVRL",
+          SIG: "语音清晰度 · SIG",
+          BAK: "背景干净度 · BAK",
+        };
+
+    const modelCards = orderedModelKeys
+      .filter((key) => dimensions[key])
+      .map((key) => {
+        const metric = dimensions[key];
+        const gradeClass = scoreClassFromGrade(metric.grade);
+        const maxScore = isAnalysis ? 10 : 5;
+        return {
+          key,
+          label: labelMap[key] || key,
+          ...metric,
+          scoreText: Number(metric.score).toFixed(isAnalysis ? 1 : 2),
+          gradeClass,
+          barStyle: `width:${Math.min(Number(metric.score) / maxScore * 100, 100)}%;background:${colorVarFromStatusClass(gradeClass)}`,
+        };
+      });
+
+    if (page === "eval" && payload.model.model_key === "dnsmos") {
+      modelCards.push({
+        key: "advice",
+        label: "处理建议",
+        score: null,
+        scoreText: "A-",
+        grade: "需继续优化",
+        description: buildAdviceText(page, payload),
+        gradeClass: "status-accent",
+        barStyle: "width:78%;background:var(--accent)",
+      });
+    }
+
     return {
       fileName,
       modelName: result.model_name,
@@ -325,11 +460,25 @@
       traceText: buildTraceText(result),
       adviceText: buildAdviceText(page, payload),
       layoutMode: page === "eval" && payload.model.model_key === "nisqa" ? "compact-five" : "default",
-      primaryMetric: primaryKey ? { key: primaryKey, ...dimensions[primaryKey] } : null,
-      modelCards: orderedModelKeys
-        .filter((key) => dimensions[key])
-        .map((key) => ({ key, ...dimensions[key] })),
-      signalCards: Object.entries(signalMetrics).map(([key, metric]) => ({ key, ...metric })),
+      primaryMetric,
+      hero: primaryMetric ? {
+        valueText: Number(primaryMetric.score).toFixed(isAnalysis ? 1 : 2),
+        valueClass: scoreClassFromGrade(primaryMetric.grade),
+        gradeText: `${primaryMetric.grade} · ${primaryMetric.description}`,
+        gradeClass: scoreClassFromGrade(primaryMetric.grade),
+        gradeStyle: gradeBackgroundStyle(primaryMetric.grade),
+      } : null,
+      modelCards,
+      signalCards: Object.entries(signalMetrics).map(([key, metric]) => ({
+        key,
+        ...metric,
+        label: signalLabel(key),
+        valueText: formatSignalMetricValue(metric),
+        valueClass: signalStateClass(metric.grade),
+        stateText: signalStateText(metric.grade),
+        stateClass: signalStateClass(metric.grade),
+        description: signalDescription(page, key, metric),
+      })),
       detailRow,
     };
   }
@@ -433,6 +582,143 @@
       altHeadline,
       altReason,
     };
+  }
+
+  function buildCompareSummaryViewModel(kind, mode, baseGroup, bestOverall, bestDelta, runtimeSummary = null) {
+    const isAnalysis = kind === "analysis";
+    const domain = isAnalysis ? "analysis" : "speech";
+    const freeWinner = runtimeSummary?.best || bestOverall;
+    const baseWinner = runtimeSummary?.best || bestDelta || baseGroup;
+
+    const free = {
+      winnerKey: freeWinner?.key || "-",
+      title: freeWinner ? `推荐版本 ${freeWinner.key}` : "推荐版本",
+      subline: runtimeSummary?.defaultSubline || (freeWinner ? `\`${freeWinner.file}\` 综合表现更稳，适合作为当前首选版本。` : "等待脚本填充当前最佳结果。"),
+      reason: runtimeSummary?.defaultReason || freeWinner?.rationale || "等待脚本填充结论。",
+      kpis: [
+        {
+          label: "总分",
+          value: freeWinner ? formatScore(freeWinner.score) : "-",
+          className: freeWinner ? getStatusClass("score", freeWinner.score, domain) : "muted",
+        },
+        {
+          label: "峰值",
+          value: freeWinner ? freeWinner.peak.toFixed(1) : "-",
+          className: freeWinner ? getStatusClass("peak", freeWinner.peak) : "muted",
+        },
+        {
+          label: isAnalysis ? "状态" : "削波",
+          value: freeWinner ? (isAnalysis ? "可优化后交付" : String(freeWinner.clipping)) : "-",
+          className: freeWinner ? (isAnalysis ? "status-good" : getStatusClass("clipping", freeWinner.clipping)) : "muted",
+        },
+      ],
+    };
+
+    const base = {
+      winnerKey: baseWinner?.key || "-",
+      title: runtimeSummary?.altHeadline || (baseWinner ? `推荐版本 ${baseWinner.key}` : "推荐版本"),
+      subline: runtimeSummary
+        ? `\`${baseWinner.file}\` vs ${baseGroup.key} ${formatSigned(baseWinner.delta)}`
+        : baseWinner?.subline
+          ? baseWinner.subline
+        : baseWinner
+          ? `\`${baseWinner.file}\` 相对基准组 ${baseGroup.key} 提升最明显。`
+          : "等待脚本填充基准对比结果。",
+      reason: runtimeSummary?.altReason || baseWinner?.reason || (baseWinner ? `相对 ${baseGroup.key}，${baseWinner.file} 的表现变化最明显。` : "等待脚本填充结论。"),
+      kpis: [
+        {
+          label: "相对提升",
+          value: baseWinner ? formatSigned(baseWinner.delta) : "-",
+          className: baseWinner ? (baseWinner.delta >= 0 ? "status-good" : "status-warn") : "muted",
+        },
+        {
+          label: "当前基准",
+          value: baseGroup?.key || "-",
+          className: baseGroup ? "status-good" : "muted",
+        },
+        {
+          label: "总分",
+          value: baseWinner ? formatScore(baseWinner.score) : "-",
+          className: baseWinner ? getStatusClass("score", baseWinner.score, domain) : "muted",
+        },
+      ],
+    };
+
+    return { free, base };
+  }
+
+  function buildCompareRankingViewModel(kind, groups, mode, baseKey) {
+    const isAnalysis = kind === "analysis";
+    const domain = isAnalysis ? "analysis" : "speech";
+    const baseGroup = groups.find((group) => group.key === baseKey) || groups[0] || null;
+    const list = mode === "base"
+      ? groups
+        .filter((group) => group.key !== baseGroup?.key)
+        .map((group) => ({ ...group, delta: Number((group.score - (baseGroup?.score ?? 0)).toFixed(2)) }))
+        .sort((a, b) => b.delta - a.delta)
+      : [...groups].sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
+
+    return list.map((group, index) => ({
+      key: group.key,
+      headline: `${group.key} · ${group.file}`,
+      copy: mode === "base"
+        ? group.delta > 0
+          ? "比基准更好"
+          : group.delta === 0
+            ? "与基准持平"
+            : "比基准更差"
+        : group.rationale,
+      scoreText: formatScore(group.score),
+      scoreClass: getStatusClass("score", group.score, domain),
+      subline: mode === "base"
+        ? `vs ${baseGroup?.key || baseKey} ${formatSigned(group.delta)}`
+        : `综合排序第${index + 1}`,
+      top: index === 0,
+    }));
+  }
+
+  function buildCompareTableViewModel(kind, groups, view, mode, models, baseKey) {
+    const orderedGroups = mode === "base"
+      ? groups.map((group) => ({
+        ...group,
+        delta: Number((group.score - ((groups.find((item) => item.key === baseKey) || groups[0] || { score: 0 }).score)).toFixed(2)),
+      }))
+      : [...groups];
+    const headers = buildDetailHeaders(kind, view, mode, models);
+    const columns = getDetailColumns(kind, view, models).filter((column) => !column.mode || column.mode === mode);
+    const tbodyHtml = orderedGroups.map((group, index) => {
+      const rank = group.rank ?? index + 1;
+      const delta = group.delta ?? 0;
+      return `<tr>${columns.map((column) => buildDetailCell(column.key, group, { delta, rank })).join("")}</tr>`;
+    }).join("");
+
+    return {
+      tag: mode === "base" ? `基准组 ${baseKey}` : "自由对比",
+      headers,
+      tbodyHtml,
+    };
+  }
+
+  function formatExportSetting(value) {
+    if (value === "json") return "JSON";
+    if (value === "csv") return "CSV";
+    return "CSV + JSON";
+  }
+
+  function formatHistoryRetentionDays(value) {
+    return value >= 99999 ? "永久" : `${value} 天`;
+  }
+
+  function formatCompareModeLabel(value) {
+    return value === "free" ? "自由对比" : "基准对比";
+  }
+
+  function formatSceneLabel(scene) {
+    return scene === "compare" ? "对比" : "单文件";
+  }
+
+  function formatModelTag(label) {
+    return `模型: ${label}`;
   }
 
   function formatSignalMetricValue(metric) {
@@ -550,6 +836,14 @@
     buildSingleDetailCells,
     buildRuntimeCompareGroups,
     buildRuntimeCompareSummary,
+    buildCompareSummaryViewModel,
+    buildCompareRankingViewModel,
+    buildCompareTableViewModel,
+    formatExportSetting,
+    formatHistoryRetentionDays,
+    formatCompareModeLabel,
+    formatSceneLabel,
+    formatModelTag,
     getStatusClass,
     getDetailColumns,
     buildDetailHeaders,

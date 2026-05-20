@@ -1,6 +1,6 @@
 # TODO
 
-更新时间：2026-05-19
+更新时间：2026-05-20
 
 ## 当前已完成
 
@@ -29,6 +29,31 @@
 ## 当前高优先级
 
 - [ ] 开始基于 `web-preview` 落真实现，按阶段推进并持续同步 `todo.md`
+- [x] `web-preview` 前端架构清理阶段已完成
+  - 单文件结果区已统一为共享 renderer：
+    - overview
+    - 模型结果
+    - 信号分析
+    - detail table
+  - 对比结果区已统一共享：
+    - summary
+    - ranking
+    - table
+  - `web-preview-app.js` 与 `web-preview-data.js` 边界已进一步明确
+  - `runtimeState` 已切成清晰 slice：
+    - `single`
+    - `compare`
+    - `history`
+    - `settings`
+    - `requests`
+  - 页面动作已抽成 helper/action：
+    - upload
+    - compare
+    - export
+    - reset
+    - settings
+    - history
+  - 真实结果页视觉继续以预览设计为准，NISQA 单文件页当前采用“一行 5 张模型结果卡”的最终版式
 - [x] 第一阶段已完成：抽出可扩展的 Web 骨架层
   - `audioqas/web/schemas.py`
   - `audioqas/web/registry.py`
@@ -103,6 +128,7 @@
   - 补更多历史任务类型
   - 补更多设置项状态组合
   - 补更多 compare 边界场景
+- [ ] 如后续继续前端改动，优先做“新需求/新能力”，不再继续大规模展示层重构
 - [x] 统一运行产物默认路径到工程内
   - 预处理中间文件默认写入 `.tmp/preprocessed`
   - 上传缓存默认写入 `.tmp/web_uploads`
@@ -212,6 +238,11 @@
   - 数据层测试
   - DOM/交互测试
   - API 契约测试
+- [x] 当前验证基线已更新为：
+  - `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q`
+    - `115 passed`
+  - `npm run test:web-preview`
+    - `55 pass, 0 fail`
 
 ## 文档维护
 

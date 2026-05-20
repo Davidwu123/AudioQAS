@@ -645,11 +645,12 @@ body::before{
 
 .four-col.compact-five{
   grid-template-columns:repeat(5, minmax(0,1fr));
-  gap:10px;
+  gap:14px;
 }
 
 .four-col.compact-five .score-card{
-  padding:14px;
+  min-height:148px;
+  padding:16px;
 }
 
 .four-col.compact-five .label{
@@ -657,16 +658,16 @@ body::before{
 }
 
 .four-col.compact-five .number{
-  font-size:24px;
+  font-size:38px;
 }
 
 .four-col.compact-five .grade{
-  font-size:11px;
+  font-size:13px;
 }
 
 .four-col.compact-five .desc{
-  font-size:11px;
-  line-height:1.45;
+  font-size:12px;
+  line-height:1.65;
 }
 
 .five-col{
@@ -1642,7 +1643,9 @@ tbody tr:hover td{
 <script>
 (function() {
   const base = location.protocol === "file:" ? "." : "/design";
-  const assetVersion = "2026-05-19-1";
+  const assetVersion = location.protocol === "file:"
+    ? String(Date.now())
+    : "2026-05-20-architecture-cleanup-1";
   function load(src) {
     return new Promise((resolve, reject) => {
       const script = document.createElement("script");

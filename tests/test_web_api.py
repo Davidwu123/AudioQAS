@@ -24,6 +24,9 @@ def _with_real_preprocess_dir(tmp_path, monkeypatch) -> None:
     target = tmp_path / "preprocessed"
     target.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("AUDIOQAS_PREPROCESS_DIR", str(target))
+    state_dir = tmp_path / "web_state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("AUDIOQAS_WEB_STATE_DIR", str(state_dir))
 
 
 class FakeEvaluationService:

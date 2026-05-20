@@ -16,38 +16,39 @@ const state = {
   },
 };
 
-const settingsState = {
-  trace: true,
-  compareDefault: "free",
-  preprocessResample: true,
-  preprocessToMono: true,
-  preprocessExtractAudio: true,
-  exportFormat: "json_csv",
-  historyRetentionDays: 180,
-};
-
 const runtimeState = {
   single: {
     eval: { file: null, status: "idle", result: null, error: null },
     analysis: { file: null, status: "idle", result: null, error: null },
   },
+  compare: {
+    groups: {
+      eval: {},
+      analysis: {},
+    },
+    results: {
+      eval: null,
+      analysis: null,
+    },
+  },
   requests: {
     eval: { single: null, compare: null },
     analysis: { single: null, compare: null },
+  },
+  settings: {
+    trace: true,
+    compareDefault: "free",
+    preprocessResample: true,
+    preprocessToMono: true,
+    preprocessExtractAudio: true,
+    exportFormat: "json_csv",
+    historyRetentionDays: 180,
   },
   history: {
     status: "idle",
     items: [],
     error: null,
     filter: "all",
-  },
-  compareGroups: {
-    eval: {},
-    analysis: {},
-  },
-  compareResults: {
-    eval: null,
-    analysis: null,
   },
 };
 
@@ -82,6 +83,14 @@ const {
   buildSingleDetailCells,
   buildRuntimeCompareGroups,
   buildRuntimeCompareSummary,
+  buildCompareSummaryViewModel,
+  buildCompareRankingViewModel,
+  buildCompareTableViewModel,
+  formatExportSetting,
+  formatHistoryRetentionDays,
+  formatCompareModeLabel,
+  formatSceneLabel,
+  formatModelTag,
   getCompareDataset,
   formatSigned,
   formatScore,
@@ -90,6 +99,120 @@ const {
   buildDetailHeaders,
   buildDetailCell,
 } = AudioQASWebPreview;
+
+function applyCompareSummary(summaryNode, viewModel, mode) {
+  if (!summaryNode) return;
+  summaryNode.classList.toggle("alt", mode === "base");
+  const current = mode === "base" ? viewModel.base : viewModel.free;
+  const targetClass = mode === "base" ? ".compare-summary-alt" : ".compare-summary-default";
+  const scope = summaryNode.querySelector(targetClass);
+  if (!scope) return;
+  scope.querySelector(".winner-mark").textContent = current.winnerKey;
+  scope.querySelector("strong").textContent = current.title;
+  scope.querySelector(".winner-copy span").textContent = current.subline;
+  scope.querySelector(".compare-reason").textContent = current.reason;
+  const kpiLabels = scope.querySelectorAll(".compare-kpi strong");
+  const kpiSpans = scope.querySelectorAll(".compare-kpi span");
+  current.kpis.forEach((kpi, index) => {
+    if (kpiLabels[index]) kpiLabels[index].textContent = kpi.label;
+    if (kpiSpans[index]) {
+      kpiSpans[index].textContent = kpi.value;
+      kpiSpans[index].className = kpi.className;
+    }
+  });
+}
+
+function applySingleOverview(page, view, options = {}) {
+  const {
+    titleSelector,
+    summarySelector,
+    adviceSelector,
+    traceSelector,
+    summaryTextSelector,
+    gridSelector,
+    compactFive = false,
+  } = options;
+  const title = document.querySelector(titleSelector);
+  const fileSummary = document.querySelector(summarySelector);
+  const advice = document.querySelector(adviceSelector);
+  const trace = document.querySelector(traceSelector);
+  const heroValue = document.querySelector(`[data-page="${page}"] .score-hero .value`);
+  const heroGrade = document.querySelector(`[data-page="${page}"] .score-hero .pill-grade`);
+  const summaryText = document.querySelector(summaryTextSelector);
+  const grid = document.querySelector(gridSelector);
+
+  if (title) title.textContent = view.fileName;
+  if (fileSummary) fileSummary.textContent = view.summary;
+  if (advice) advice.textContent = view.adviceText;
+  if (trace) trace.textContent = view.traceText;
+  if (heroValue && view.hero) {
+    heroValue.textContent = view.hero.valueText;
+    heroValue.className = `value ${view.hero.valueClass}`;
+  }
+  if (heroGrade && view.hero) {
+    heroGrade.textContent = view.hero.gradeText;
+    heroGrade.className = `pill-grade ${view.hero.gradeClass}`;
+    heroGrade.setAttribute("style", view.hero.gradeStyle);
+  }
+  if (summaryText && view.primaryMetric) summaryText.textContent = view.primaryMetric.description;
+  if (grid) {
+    if (compactFive) {
+      grid.classList.toggle("compact-five", view.layoutMode === "compact-five");
+    }
+    grid.innerHTML = view.modelCards.map((card) => `
+      <div class="score-card">
+        <div class="label">${card.label || card.key}</div>
+        <div class="number ${card.gradeClass}">${card.scoreText}</div>
+        <div class="bar"><span style="${card.barStyle}"></span></div>
+        <div class="grade ${card.gradeClass}">${card.grade}</div>
+        <div class="desc">${card.description}</div>
+      </div>
+    `).join("");
+  }
+}
+
+function applySingleMetricCards(page, view) {
+  const metricCards = document.querySelectorAll(`[data-page="${page}"] .metric`);
+  metricCards.forEach((card, index) => {
+    const metric = view.signalCards[index];
+    if (!metric) return;
+    const label = card.querySelector(".label");
+    const value = card.querySelector(".value");
+    const stateNode = card.querySelector(".state");
+    const desc = card.querySelector(".desc");
+    if (label) label.textContent = metric.label || `${metric.key} · ${metric.unit}`;
+    if (value) {
+      value.textContent = metric.valueText;
+      value.className = `value ${metric.valueClass}`;
+    }
+    if (stateNode) {
+      stateNode.textContent = metric.stateText;
+      stateNode.className = `state ${metric.stateClass}`;
+    }
+    if (desc) desc.textContent = metric.description;
+  });
+}
+
+function applySingleDetailTable(page, view, modelKey) {
+  const tableRoot = document.querySelector(`[data-single-detail-table="${page}"]`);
+  if (!tableRoot) return;
+  const currentView = state.detailViews[page];
+  tableRoot.classList.remove("metrics", "signal", "full");
+  tableRoot.classList.add(viewClassMap[currentView] || "metrics");
+  const modelTag = tableRoot.querySelector(`[data-single-model-tag="${page}"]`);
+  if (modelTag) modelTag.textContent = formatModelTag(view.modelName);
+  const theadRow = tableRoot.querySelector("thead tr");
+  if (theadRow) {
+    theadRow.innerHTML = buildSingleDetailHeaders(page, currentView, modelKey);
+  }
+  const tbody = tableRoot.querySelector("tbody");
+  if (tbody) {
+    tbody.innerHTML = `<tr>${buildSingleDetailCells(page, view.detailRow, currentView, modelKey)}</tr>`;
+  }
+  tableRoot.querySelectorAll("[data-single-detail-view]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.singleDetailView === currentView);
+  });
+}
 
 function createHiddenFileInput(page) {
   const input = document.createElement("input");
@@ -119,10 +242,10 @@ function createHiddenCompareInput(kind, groupKey) {
   input.addEventListener("change", async () => {
     const file = input.files?.[0];
     if (!file) return;
-    runtimeState.compareGroups[kind][groupKey] = file;
+    runtimeState.compare.groups[kind][groupKey] = file;
     input.value = "";
     renderCompareBuilder(kind);
-    const selected = Object.keys(runtimeState.compareGroups[kind]).length;
+    const selected = Object.keys(runtimeState.compare.groups[kind]).length;
     if (selected >= 2) {
       await evaluateCompareUpload(kind);
     }
@@ -237,7 +360,7 @@ async function evaluateCompareUpload(kind) {
   const modelKey = state.models[kind];
   const requestId = nextRequestId(kind, "compare");
   runtimeState.requests[kind].compare = requestId;
-  const selectedGroups = Object.entries(runtimeState.compareGroups[kind])
+  const selectedGroups = Object.entries(runtimeState.compare.groups[kind])
     .sort(([a], [b]) => a.localeCompare(b));
   if (selectedGroups.length < 2) return;
 
@@ -273,7 +396,7 @@ async function evaluateCompareUpload(kind) {
       throw new Error(`Compare upload failed: ${response.status}`);
     }
     const payload = await response.json();
-    runtimeState.compareResults[kind] = payload;
+    runtimeState.compare.results[kind] = payload;
     renderCompareFromRuntime(kind, payload);
     if (progressLabel) progressLabel.textContent = `100% · ${requestId}`;
     if (progressFill) progressFill.style.width = "100%";
@@ -297,19 +420,19 @@ function setPage(page) {
 function setScene(page, scene) {
   state[`${page}Scene`] = scene;
   if (scene === "compare") {
-    state.compare[page].mode = settingsState.compareDefault;
+    state.compare[page].mode = runtimeState.settings.compareDefault;
   }
   render();
 }
 
 function resetPageState(page) {
   runtimeState.single[page] = { file: null, status: "idle", result: null, error: null };
-  runtimeState.compareResults[page] = null;
-  runtimeState.compareGroups[page] = {};
+  runtimeState.compare.results[page] = null;
+  runtimeState.compare.groups[page] = {};
   runtimeState.requests[page].single = null;
   runtimeState.requests[page].compare = null;
   state.detailViews[page] = "metrics";
-  state.compare[page] = { mode: settingsState.compareDefault, base: "A" };
+  state.compare[page] = { mode: runtimeState.settings.compareDefault, base: "A" };
   compareGroupState[page] = 0;
 
   const selectors = [
@@ -327,20 +450,10 @@ function resetPageState(page) {
   render();
 }
 
-function formatExportSetting(value) {
-  if (value === "json") return "JSON";
-  if (value === "csv") return "CSV";
-  return "CSV + JSON";
-}
-
 function nextExportFormat(value) {
   if (value === "json_csv") return "json";
   if (value === "json") return "csv";
   return "json_csv";
-}
-
-function formatHistoryRetentionDays(value) {
-  return value >= 99999 ? "永久" : `${value} 天`;
 }
 
 function nextHistoryRetentionDays(value) {
@@ -348,6 +461,110 @@ function nextHistoryRetentionDays(value) {
   if (value === 90) return 180;
   if (value === 180) return 99999;
   return 30;
+}
+
+function applySettingsPayload(payload) {
+  state.models.eval = payload.default_eval_model || state.models.eval;
+  state.models.analysis = payload.default_analysis_model || state.models.analysis;
+  runtimeState.settings.trace = payload.trace ?? runtimeState.settings.trace;
+  runtimeState.settings.compareDefault = payload.compare_default || runtimeState.settings.compareDefault;
+  runtimeState.settings.preprocessResample = payload.preprocess_resample ?? runtimeState.settings.preprocessResample;
+  runtimeState.settings.preprocessToMono = payload.preprocess_to_mono ?? runtimeState.settings.preprocessToMono;
+  runtimeState.settings.preprocessExtractAudio = payload.preprocess_extract_audio ?? runtimeState.settings.preprocessExtractAudio;
+  runtimeState.settings.exportFormat = payload.export_format || runtimeState.settings.exportFormat;
+  runtimeState.settings.historyRetentionDays = payload.history_retention_days ?? runtimeState.settings.historyRetentionDays;
+}
+
+function openSingleUploadAction(page) {
+  fileInputs[page]?.click();
+}
+
+function changeSceneAction(page, scene) {
+  setScene(page, scene);
+}
+
+function changeCompareModeAction(kind, mode) {
+  state.compare[kind].mode = mode;
+  render();
+}
+
+async function toggleSettingAction(key, isOn) {
+  if (key === "trace") runtimeState.settings.trace = isOn;
+  if (key === "preprocess-resample") runtimeState.settings.preprocessResample = isOn;
+  if (key === "preprocess-to-mono") runtimeState.settings.preprocessToMono = isOn;
+  if (key === "preprocess-extract-audio") runtimeState.settings.preprocessExtractAudio = isOn;
+  await persistSettings({
+    trace: runtimeState.settings.trace,
+    preprocess_resample: runtimeState.settings.preprocessResample,
+    preprocess_to_mono: runtimeState.settings.preprocessToMono,
+    preprocess_extract_audio: runtimeState.settings.preprocessExtractAudio,
+  });
+}
+
+async function updateCompareDefaultAction() {
+  runtimeState.settings.compareDefault = runtimeState.settings.compareDefault === "free" ? "base" : "free";
+  ["eval", "analysis"].forEach((kind) => {
+    if (state[`${kind}Scene`] === "compare") state.compare[kind].mode = runtimeState.settings.compareDefault;
+  });
+  await persistSettings({ compare_default: runtimeState.settings.compareDefault });
+}
+
+async function updateExportFormatAction() {
+  runtimeState.settings.exportFormat = nextExportFormat(runtimeState.settings.exportFormat);
+  await persistSettings({ export_format: runtimeState.settings.exportFormat });
+}
+
+async function updateHistoryRetentionAction() {
+  runtimeState.settings.historyRetentionDays = nextHistoryRetentionDays(runtimeState.settings.historyRetentionDays);
+  await persistSettings({ history_retention_days: runtimeState.settings.historyRetentionDays });
+}
+
+function applyHistoryFilterAction(filter) {
+  runtimeState.history.filter = filter || "all";
+  renderHistory();
+}
+
+async function showHistoryDetailAction(itemId) {
+  await showHistoryDetail(itemId);
+}
+
+function exportPageAction(page) {
+  downloadExport(page);
+}
+
+function resetPageAction(page) {
+  resetPageState(page);
+}
+
+function switchModelAction(scope, modelKey) {
+  state.models[scope] = modelKey;
+  runtimeState.compare.groups[scope === "eval" ? "eval" : "analysis"] = {};
+  runtimeState.compare.results[scope === "eval" ? "eval" : "analysis"] = null;
+  render();
+}
+
+async function toggleDefaultEvalModelAction() {
+  state.models.eval = state.models.eval === "dnsmos" ? "nisqa" : "dnsmos";
+  await persistSettings({ default_eval_model: state.models.eval });
+}
+
+function changeCompareDetailViewAction(kind, view) {
+  state.detailViews[kind] = view;
+  render();
+}
+
+function changeSingleDetailViewAction(kind, view) {
+  state.detailViews[kind] = view;
+  const single = runtimeState.single[kind];
+  if (single?.status === "success" && single.result && single.file) {
+    applySingleEvaluation(kind, single.result, single.file.name);
+  } else {
+    render();
+  }
+}
+
+function addCompareGroupAction(kind) {
+  addCompareGroup(kind);
 }
 
 function buildExportPayload(page) {
@@ -362,7 +579,7 @@ function buildExportPayload(page) {
       payload: single.result,
     };
   }
-  const compare = runtimeState.compareResults[page];
+  const compare = runtimeState.compare.results[page];
   if (compare) {
     return {
       page,
@@ -394,10 +611,10 @@ function downloadExport(page) {
     link.remove();
     URL.revokeObjectURL(url);
   };
-  if (settingsState.exportFormat === "json" || settingsState.exportFormat === "json_csv") {
+  if (runtimeState.settings.exportFormat === "json" || runtimeState.settings.exportFormat === "json_csv") {
     download(JSON.stringify(exportPayload, null, 2), "application/json", "json");
   }
-  if (settingsState.exportFormat === "csv" || settingsState.exportFormat === "json_csv") {
+  if (runtimeState.settings.exportFormat === "csv" || runtimeState.settings.exportFormat === "json_csv") {
     const rows = [
       ["page", page],
       ["scene", scene],
@@ -450,7 +667,7 @@ function renderModelContent(scope) {
     }
     const compareTag = document.querySelector('[data-compare-model-tag="eval"]');
     if (compareTag) {
-      compareTag.textContent = `模型: ${modelKey === "nisqa" ? "NISQA" : "DNSMOS"}`;
+      compareTag.textContent = formatModelTag(modelKey === "nisqa" ? "NISQA" : "DNSMOS");
     }
     const compareLabel = document.querySelector('[data-compare-primary-label="eval"]');
     const compareSub = document.querySelector('[data-compare-primary-sub="eval"]');
@@ -461,133 +678,34 @@ function renderModelContent(scope) {
   }
 }
 
-function scoreClassFromGrade(grade) {
-  const map = {
-    Excellent: "status-excellent",
-    Good: "status-good",
-    Fair: "status-fair",
-    Poor: "status-poor",
-    Bad: "status-bad",
-  };
-  return map[grade] || "status-fair";
-}
-
 function applySingleEvaluation(page, payload, fileName) {
   const view = buildSingleFileViewModel(page, payload, fileName);
 
   if (page === "eval") {
-    const title = document.querySelector('[data-page="eval"] .card-title');
-    const fileSummary = document.querySelector("[data-eval-file-summary]");
-    const advice = document.querySelector("[data-eval-advice]");
-    const trace = document.querySelector("[data-eval-trace]");
-    const heroValue = document.querySelector('[data-page="eval"] .score-hero .value');
-    const heroGrade = document.querySelector('[data-page="eval"] .score-hero .pill-grade');
-    const summaryText = document.querySelector('[data-page="eval"] .overview-summary p');
-    const grid = document.querySelector("[data-eval-model-grid]");
-
-    if (title) title.textContent = view.fileName;
-    if (fileSummary) fileSummary.textContent = view.summary;
-    if (advice) advice.textContent = view.adviceText;
-    if (trace) trace.textContent = view.traceText;
-
-    if (heroValue && view.primaryMetric) {
-      heroValue.textContent = Number(view.primaryMetric.score).toFixed(2);
-      heroValue.className = `value ${scoreClassFromGrade(view.primaryMetric.grade)}`;
-    }
-    if (heroGrade && view.primaryMetric) {
-      heroGrade.textContent = `${view.primaryMetric.grade} · ${view.primaryMetric.description}`;
-      heroGrade.className = `pill-grade ${scoreClassFromGrade(view.primaryMetric.grade)}`;
-    }
-    if (summaryText && view.primaryMetric) summaryText.textContent = view.primaryMetric.description;
-    if (grid) {
-      grid.classList.toggle("compact-five", view.layoutMode === "compact-five");
-      grid.innerHTML = view.modelCards.map((card) => `
-        <div class="score-card">
-          <div class="label">${card.key}</div>
-          <div class="number ${scoreClassFromGrade(card.grade)}">${Number(card.score).toFixed(2)}</div>
-          <div class="bar"><span style="width:${Math.min(Number(card.score) / 5 * 100, 100)}%;background:var(--accent)"></span></div>
-          <div class="grade ${scoreClassFromGrade(card.grade)}">${card.grade}</div>
-          <div class="desc">${card.description}</div>
-        </div>
-      `).join("");
-    }
+    applySingleOverview(page, view, {
+      titleSelector: '[data-page="eval"] .card-title',
+      summarySelector: "[data-eval-file-summary]",
+      adviceSelector: "[data-eval-advice]",
+      traceSelector: "[data-eval-trace]",
+      summaryTextSelector: '[data-page="eval"] .overview-summary p',
+      gridSelector: "[data-eval-model-grid]",
+      compactFive: true,
+    });
   }
 
   if (page === "analysis") {
-    const title = document.querySelector('[data-page="analysis"] .card-title');
-    const advice = document.querySelector("[data-analysis-advice]");
-    const fileSummary = document.querySelector("[data-analysis-file-summary]");
-    const trace = document.querySelector("[data-analysis-trace]");
-    const heroValue = document.querySelector('[data-page="analysis"] .score-hero .value');
-    const heroGrade = document.querySelector('[data-page="analysis"] .score-hero .pill-grade');
-    const summaryText = document.querySelector('[data-page="analysis"] .overview-summary p');
-    const grid = document.querySelector('[data-page="analysis"] .four-col');
-
-    if (title) title.textContent = view.fileName;
-    if (advice) advice.textContent = view.adviceText;
-    if (fileSummary) fileSummary.textContent = view.summary;
-    if (trace) trace.textContent = view.traceText;
-    if (heroValue && view.primaryMetric) {
-      heroValue.textContent = Number(view.primaryMetric.score).toFixed(1);
-      heroValue.className = `value ${scoreClassFromGrade(view.primaryMetric.grade)}`;
-    }
-    if (heroGrade && view.primaryMetric) {
-      heroGrade.textContent = `${view.primaryMetric.grade} · ${view.primaryMetric.description}`;
-      heroGrade.className = `pill-grade ${scoreClassFromGrade(view.primaryMetric.grade)}`;
-    }
-    if (summaryText && view.primaryMetric) summaryText.textContent = view.primaryMetric.description;
-    if (grid) {
-      grid.innerHTML = view.modelCards.map((card) => `
-        <div class="score-card">
-          <div class="label">${card.key}</div>
-          <div class="number ${scoreClassFromGrade(card.grade)}">${Number(card.score).toFixed(1)}</div>
-          <div class="bar"><span style="width:${Math.min(Number(card.score) / 10 * 100, 100)}%;background:var(--accent)"></span></div>
-          <div class="grade ${scoreClassFromGrade(card.grade)}">${card.grade}</div>
-          <div class="desc">${card.description}</div>
-        </div>
-      `).join("");
-    }
-  }
-
-  const metricCards = document.querySelectorAll(`[data-page="${page}"] .metric`);
-  metricCards.forEach((card, index) => {
-    const metric = view.signalCards[index];
-    if (!metric) return;
-    const label = card.querySelector(".label");
-    const value = card.querySelector(".value");
-    const stateNode = card.querySelector(".state");
-    const desc = card.querySelector(".desc");
-    if (label) label.textContent = `${metric.key} · ${metric.unit}`;
-    if (value) {
-      value.textContent = formatSignalMetricValue(metric);
-      value.className = `value ${metric.grade === "Good" ? "status-good" : metric.grade === "Warning" ? "status-warn" : "status-poor"}`;
-    }
-    if (stateNode) {
-      stateNode.textContent = metric.grade;
-      stateNode.className = `state ${metric.grade === "Good" ? "status-good" : metric.grade === "Warning" ? "status-warn" : "status-poor"}`;
-    }
-    if (desc) desc.textContent = metric.description;
-  });
-
-  const tableRoot = document.querySelector(`[data-single-detail-table="${page}"]`);
-  if (tableRoot) {
-    const currentView = state.detailViews[page];
-    tableRoot.classList.remove("metrics", "signal", "full");
-    tableRoot.classList.add(viewClassMap[currentView] || "metrics");
-    const modelTag = tableRoot.querySelector(`[data-single-model-tag="${page}"]`);
-    if (modelTag) modelTag.textContent = `模型: ${view.modelName}`;
-    const theadRow = tableRoot.querySelector("thead tr");
-    if (theadRow) {
-      theadRow.innerHTML = buildSingleDetailHeaders(page, currentView, payload.model.model_key);
-    }
-    const tbody = tableRoot.querySelector("tbody");
-    if (tbody) {
-      tbody.innerHTML = `<tr>${buildSingleDetailCells(page, view.detailRow, currentView, payload.model.model_key)}</tr>`;
-    }
-    tableRoot.querySelectorAll("[data-single-detail-view]").forEach((button) => {
-      button.classList.toggle("active", button.dataset.singleDetailView === currentView);
+    applySingleOverview(page, view, {
+      titleSelector: '[data-page="analysis"] .card-title',
+      summarySelector: "[data-analysis-file-summary]",
+      adviceSelector: "[data-analysis-advice]",
+      traceSelector: "[data-analysis-trace]",
+      summaryTextSelector: '[data-page="analysis"] .overview-summary p',
+      gridSelector: '[data-page="analysis"] .four-col',
     });
   }
+
+  applySingleMetricCards(page, view);
+  applySingleDetailTable(page, view, payload.model.model_key);
 }
 
 async function loadHistoryItems() {
@@ -615,18 +733,10 @@ async function loadSettings() {
       throw new Error(`Settings load failed: ${response.status}`);
     }
     const payload = await response.json();
-    state.models.eval = payload.default_eval_model || state.models.eval;
-    state.models.analysis = payload.default_analysis_model || state.models.analysis;
-    settingsState.trace = payload.trace ?? settingsState.trace;
-    settingsState.compareDefault = payload.compare_default || settingsState.compareDefault;
-    settingsState.preprocessResample = payload.preprocess_resample ?? settingsState.preprocessResample;
-    settingsState.preprocessToMono = payload.preprocess_to_mono ?? settingsState.preprocessToMono;
-    settingsState.preprocessExtractAudio = payload.preprocess_extract_audio ?? settingsState.preprocessExtractAudio;
-    settingsState.exportFormat = payload.export_format || settingsState.exportFormat;
-    settingsState.historyRetentionDays = payload.history_retention_days ?? settingsState.historyRetentionDays;
+    applySettingsPayload(payload);
     ["eval", "analysis"].forEach((kind) => {
       if (state[`${kind}Scene`] === "compare") {
-        state.compare[kind].mode = settingsState.compareDefault;
+        state.compare[kind].mode = runtimeState.settings.compareDefault;
       }
     });
   } catch (error) {
@@ -646,15 +756,7 @@ async function persistSettings(patch) {
       throw new Error(`Settings save failed: ${response.status}`);
     }
     const payload = await response.json();
-    state.models.eval = payload.default_eval_model || state.models.eval;
-    state.models.analysis = payload.default_analysis_model || state.models.analysis;
-    settingsState.trace = payload.trace ?? settingsState.trace;
-    settingsState.compareDefault = payload.compare_default || settingsState.compareDefault;
-    settingsState.preprocessResample = payload.preprocess_resample ?? settingsState.preprocessResample;
-    settingsState.preprocessToMono = payload.preprocess_to_mono ?? settingsState.preprocessToMono;
-    settingsState.preprocessExtractAudio = payload.preprocess_extract_audio ?? settingsState.preprocessExtractAudio;
-    settingsState.exportFormat = payload.export_format || settingsState.exportFormat;
-    settingsState.historyRetentionDays = payload.history_retention_days ?? settingsState.historyRetentionDays;
+    applySettingsPayload(payload);
   } catch (error) {
     console.error(error);
   }
@@ -675,7 +777,7 @@ function renderCompareBuilder(kind) {
   if (!builder || !baseRow) return;
 
   const visibleGroups = getVisibleGroups(kind);
-  const selectedGroups = runtimeState.compareGroups[kind] || {};
+  const selectedGroups = runtimeState.compare.groups[kind] || {};
   builder.querySelectorAll(".group-card").forEach((card, index) => {
     const group = visibleGroups[index];
     if (!group) return;
@@ -707,7 +809,7 @@ function renderCompareBuilder(kind) {
 
 function renderCompareSection(kind) {
   const domain = kind === "analysis" ? "analysis" : "speech";
-  const runtimeCompare = runtimeState.compareResults[kind];
+  const runtimeCompare = runtimeState.compare.results[kind];
   if (runtimeCompare) {
     renderCompareFromRuntime(kind, runtimeCompare);
     return;
@@ -755,62 +857,40 @@ function renderCompareSection(kind) {
     const subline = mode === "base"
       ? `\`${winner.file}\` 相对基准组 ${baseGroup.key} 提升最明显。`
       : `\`${winner.file}\` 综合表现最稳，适合作为当前首选版本。`;
-    const title = `推荐版本 ${winner.key}`;
-    summary.classList.toggle("alt", mode === "base");
-    summary.querySelector(".compare-summary-default .winner-mark").textContent = bestOverall.key;
-    summary.querySelector(".compare-summary-default strong").textContent = `推荐版本 ${bestOverall.key}`;
-    summary.querySelector(".compare-summary-default .winner-copy span").textContent = `\`${bestOverall.file}\` 综合表现最稳，适合作为当前首选版本。`;
-    summary.querySelector(".compare-summary-default .compare-reason").textContent = bestOverall.rationale;
-    const defaultKpis = summary.querySelectorAll(".compare-summary-default .compare-kpi span");
-    defaultKpis[0].textContent = formatScore(bestOverall.score);
-    defaultKpis[0].className = getStatusClass("score", bestOverall.score, domain);
-    defaultKpis[1].textContent = bestOverall.peak.toFixed(1);
-    defaultKpis[1].className = getStatusClass("peak", bestOverall.peak);
-    defaultKpis[2].textContent = kind === "analysis" ? "可优化后交付" : String(bestOverall.clipping);
-    defaultKpis[2].className = kind === "analysis" ? "status-good" : getStatusClass("clipping", bestOverall.clipping);
-
-    summary.querySelector(".compare-summary-alt .winner-mark").textContent = winner.key;
-    summary.querySelector(".compare-summary-alt strong").textContent = title;
-    summary.querySelector(".compare-summary-alt .winner-copy span").textContent = subline;
-    summary.querySelector(".compare-summary-alt .compare-reason").textContent = reason;
-    const altSpans = summary.querySelectorAll(".compare-summary-alt .compare-kpi span");
-    const altLabels = summary.querySelectorAll(".compare-summary-alt .compare-kpi strong");
-    altLabels[0].textContent = scoreLabel;
-    altLabels[1].textContent = helperLabel;
-    altLabels[2].textContent = thirdLabel;
-    altSpans[0].textContent = scoreValue;
-    altSpans[0].className = winner.delta >= 0 ? "status-good" : "status-warn";
-    altSpans[1].textContent = helperValue;
-    altSpans[1].className = helperClass;
-    altSpans[2].textContent = thirdValue;
-    altSpans[2].className = thirdClass;
+    const summaryView = buildCompareSummaryViewModel(kind, mode, baseGroup, bestOverall, {
+      ...winner,
+      delta: winner.delta ?? 0,
+      title: `推荐版本 ${winner.key}`,
+      subline,
+      reason,
+      scoreLabel,
+      scoreValue,
+      helperLabel,
+      helperValue,
+      helperClass,
+      thirdLabel,
+      thirdValue,
+      thirdClass,
+    });
+    applyCompareSummary(summary, summaryView, mode);
   }
 
   const ranking = document.querySelector(`[data-compare-ranking="${kind}"] .ranking-list`);
   if (ranking) {
-    const mode = compareState.mode;
-    const list = mode === "base" ? byDelta : byScore;
-    ranking.innerHTML = list.map((group, index) => {
-      const top = index === 0 ? " top" : "";
-      const main = mode === "base"
-        ? `相对基准 ${baseGroup.key} 的综合提升${index === 0 ? "最大" : index === 1 ? "明显" : "仍有收益"}。`
-        : group.rationale;
-      const sub = mode === "base"
-        ? `vs ${baseGroup.key} ${formatSigned(group.delta)}`
-        : `综合排序第${index + 1}`;
-      const score = formatScore(group.score);
-      return `<div class="ranking-card${top}">
+    const rankingView = buildCompareRankingViewModel(kind, compareState.mode === "base" ? byDelta : byScore, compareState.mode, baseGroup.key);
+    ranking.innerHTML = rankingView.map((item, index) => `
+      <div class="ranking-card${item.top ? " top" : ""}">
         <div class="ranking-index">#${index + 1}</div>
         <div class="ranking-main">
-          <strong>${group.key} · ${group.file}</strong>
-          <span>${main}</span>
+          <strong>${item.headline}</strong>
+          <span>${item.copy}</span>
         </div>
         <div class="ranking-score">
-          <strong class="${getStatusClass("score", group.score, domain)}">${score}</strong>
-          <span>${sub}</span>
+          <strong class="${item.scoreClass}">${item.scoreText}</strong>
+          <span>${item.subline}</span>
         </div>
-      </div>`;
-    }).join("");
+      </div>
+    `).join("");
   }
 
   const tableRoot = document.querySelector(`[data-compare-table="${kind}"]`);
@@ -819,28 +899,23 @@ function renderCompareSection(kind) {
     tableRoot.classList.toggle("base", compareState.mode === "base");
     tableRoot.classList.remove("metrics", "signal", "full");
     tableRoot.classList.add(viewClassMap[view] || "metrics");
+    const tableView = buildCompareTableViewModel(kind, visibleGroups, view, compareState.mode, state.models, baseGroup.key);
     const tag = tableRoot.querySelector(`[data-base-tag="${kind}"]`);
-    if (tag) tag.textContent = compareState.mode === "base" ? `基准组 ${baseGroup.key}` : "自由对比";
+    if (tag) tag.textContent = tableView.tag;
     const modelTag = tableRoot.querySelector(`[data-compare-model-tag="${kind}"]`);
     if (modelTag) {
       const label = kind === "eval"
         ? (state.models.eval === "nisqa" ? "NISQA" : "DNSMOS")
         : "AudioBox Aesthetics";
-      modelTag.textContent = `模型: ${label}`;
+      modelTag.textContent = formatModelTag(label);
     }
     const theadRow = tableRoot.querySelector("thead tr");
     if (theadRow) {
-      theadRow.innerHTML = buildDetailHeaders(kind, view, compareState.mode, state.models);
+      theadRow.innerHTML = tableView.headers;
     }
     const tbody = tableRoot.querySelector("tbody");
     if (tbody) {
-      const columns = getDetailColumns(kind, view, state.models).filter((column) => !column.mode || column.mode === compareState.mode);
-      tbody.innerHTML = visibleGroups.map((group) => {
-        const delta = group.score - baseGroup.score;
-        const rank = byScore.findIndex((item) => item.key === group.key) + 1;
-        const ctx = { delta, rank };
-        return `<tr>${columns.map((column) => buildDetailCell(column.key, group, ctx)).join("")}</tr>`;
-      }).join("");
+      tbody.innerHTML = tableView.tbodyHtml;
     }
   }
 }
@@ -860,45 +935,23 @@ function renderCompareFromRuntime(kind, payload) {
   const displaySorted = [...displayItems].sort((a, b) => a.rank - b.rank);
   const summary = document.querySelector(`[data-compare-summary="${kind}"]`);
   if (summary && best) {
-    summary.classList.toggle("alt", compareState.mode === "base");
-    summary.querySelector(".compare-summary-default .winner-mark").textContent = best.key;
-    summary.querySelector(".compare-summary-default strong").textContent = `推荐版本 ${best.key}`;
-    summary.querySelector(".compare-summary-default .winner-copy span").textContent = compareSummary.defaultSubline;
-    summary.querySelector(".compare-summary-default .compare-reason").textContent = compareSummary.defaultReason;
-    const spans = summary.querySelectorAll(".compare-summary-default .compare-kpi span");
-    spans[0].textContent = compareSummary.defaultKpis.score;
-    spans[1].textContent = compareSummary.defaultKpis.peak;
-    spans[2].textContent = kind === "analysis" ? "可优化后交付" : compareSummary.defaultKpis.clipping;
-    summary.querySelector(".compare-summary-alt .winner-mark").textContent = best.key;
-    summary.querySelector(".compare-summary-alt strong").textContent = compareSummary.altHeadline;
-    summary.querySelector(".compare-summary-alt .winner-copy span").textContent = `\`${best.file}\` vs ${activeBaseKey} ${formatSigned(best.delta)}`;
-    summary.querySelector(".compare-summary-alt .compare-reason").textContent = compareSummary.altReason;
-    const altSpans = summary.querySelectorAll(".compare-summary-alt .compare-kpi span");
-    altSpans[0].textContent = formatSigned(best.delta);
-    altSpans[1].textContent = activeBaseKey;
-    altSpans[2].textContent = formatScore(best.score);
+    const summaryView = buildCompareSummaryViewModel(kind, compareState.mode, activeBaseGroup, sorted[0], best, compareSummary);
+    applyCompareSummary(summary, summaryView, compareState.mode);
   }
 
   const ranking = document.querySelector(`[data-compare-ranking="${kind}"] .ranking-list`);
   if (ranking) {
-    ranking.innerHTML = displaySorted.map((item, index) => `
-      <div class="ranking-card${index === 0 ? " top" : ""}">
+    const rankingView = buildCompareRankingViewModel(kind, displaySorted, compareState.mode, activeBaseKey);
+    ranking.innerHTML = rankingView.map((item, index) => `
+      <div class="ranking-card${item.top ? " top" : ""}">
         <div class="ranking-index">#${index + 1}</div>
         <div class="ranking-main">
-          <strong>${item.key} · ${item.file}</strong>
-          <span>${compareState.mode === "base"
-            ? item.delta > 0
-              ? "比基准更好"
-              : item.delta === 0
-                ? "与基准持平"
-                : "比基准更差"
-            : item.rationale}</span>
+          <strong>${item.headline}</strong>
+          <span>${item.copy}</span>
         </div>
         <div class="ranking-score">
-          <strong class="${getStatusClass("score", item.score, kind === "analysis" ? "analysis" : "speech")}">${formatScore(item.score)}</strong>
-          <span>${compareState.mode === "base"
-            ? `vs ${activeBaseKey} ${formatSigned(item.score - (activeBaseGroup?.score ?? 0))}`
-            : `综合排序第${index + 1}`}</span>
+          <strong class="${item.scoreClass}">${item.scoreText}</strong>
+          <span>${item.subline}</span>
         </div>
       </div>
     `).join("");
@@ -907,33 +960,33 @@ function renderCompareFromRuntime(kind, payload) {
   const tableRoot = document.querySelector(`[data-compare-table="${kind}"]`);
   if (tableRoot) {
     const view = state.detailViews[kind];
+    const tableView = buildCompareTableViewModel(kind, displayItems, view, compareState.mode, state.models, activeBaseKey);
     const modelTag = tableRoot.querySelector(`[data-compare-model-tag="${kind}"]`);
     if (modelTag) {
       const label = kind === "eval"
         ? (state.models.eval === "nisqa" ? "NISQA" : "DNSMOS")
         : "AudioBox Aesthetics";
-      modelTag.textContent = `模型: ${label}`;
+      modelTag.textContent = formatModelTag(label);
     }
+    const tag = tableRoot.querySelector(`[data-base-tag="${kind}"]`);
+    if (tag) tag.textContent = tableView.tag;
     const theadRow = tableRoot.querySelector("thead tr");
     if (theadRow) {
-      theadRow.innerHTML = buildDetailHeaders(kind, view, compareState.mode, state.models);
+      theadRow.innerHTML = tableView.headers;
     }
     const tbody = tableRoot.querySelector("tbody");
     if (tbody) {
-      tbody.innerHTML = displayItems.map((group) => {
-        const columns = getDetailColumns(kind, view, state.models).filter((column) => !column.mode || column.mode === compareState.mode);
-        return `<tr>${columns.map((column) => buildDetailCell(column.key, group, { delta: group.delta, rank: group.rank })).join("")}</tr>`;
-      }).join("");
+      tbody.innerHTML = tableView.tbodyHtml;
     }
   }
 }
 
 function renderTraceVisibility() {
   document.querySelectorAll("[data-trace-block]").forEach((el) => {
-    el.style.display = settingsState.trace ? "" : "none";
+    el.style.display = runtimeState.settings.trace ? "" : "none";
   });
   document.querySelectorAll("[data-history-trace]").forEach((el) => {
-    el.style.display = settingsState.trace ? "" : "none";
+    el.style.display = runtimeState.settings.trace ? "" : "none";
   });
 }
 
@@ -981,7 +1034,7 @@ function renderHistory() {
       <div class="timeline-top">
         <div>
           <h3>${item.timestamp} · ${item.page_title}</h3>
-          <p>${item.file_summary} · ${item.model_label} · ${item.scene === "compare" ? "对比" : "单文件"}</p>
+          <p>${item.file_summary} · ${item.model_label} · ${formatSceneLabel(item.scene)}</p>
         </div>
         <button class="small-btn" data-history-detail="${item.id}">查看详情</button>
       </div>
@@ -1005,13 +1058,13 @@ function renderSettings() {
   const historyRetentionDays = document.querySelector('[data-setting-value="history-retention-days"]');
   if (evalModel) evalModel.textContent = state.models.eval === "nisqa" ? "NISQA" : "DNSMOS";
   if (analysisModel) analysisModel.textContent = "AudioBox Aesthetics";
-  if (traceToggle) traceToggle.classList.toggle("on", settingsState.trace);
-  if (compareDefault) compareDefault.textContent = settingsState.compareDefault === "free" ? "自由对比" : "基准对比";
-  if (preprocessResample) preprocessResample.classList.toggle("on", settingsState.preprocessResample);
-  if (preprocessToMono) preprocessToMono.classList.toggle("on", settingsState.preprocessToMono);
-  if (preprocessExtractAudio) preprocessExtractAudio.classList.toggle("on", settingsState.preprocessExtractAudio);
-  if (exportFormat) exportFormat.textContent = formatExportSetting(settingsState.exportFormat);
-  if (historyRetentionDays) historyRetentionDays.textContent = formatHistoryRetentionDays(settingsState.historyRetentionDays);
+  if (traceToggle) traceToggle.classList.toggle("on", runtimeState.settings.trace);
+  if (compareDefault) compareDefault.textContent = formatCompareModeLabel(runtimeState.settings.compareDefault);
+  if (preprocessResample) preprocessResample.classList.toggle("on", runtimeState.settings.preprocessResample);
+  if (preprocessToMono) preprocessToMono.classList.toggle("on", runtimeState.settings.preprocessToMono);
+  if (preprocessExtractAudio) preprocessExtractAudio.classList.toggle("on", runtimeState.settings.preprocessExtractAudio);
+  if (exportFormat) exportFormat.textContent = formatExportSetting(runtimeState.settings.exportFormat);
+  if (historyRetentionDays) historyRetentionDays.textContent = formatHistoryRetentionDays(runtimeState.settings.historyRetentionDays);
 }
 
 async function showHistoryDetail(itemId) {
@@ -1024,7 +1077,7 @@ async function showHistoryDetail(itemId) {
     const lines = [
       `时间: ${payload.timestamp}`,
       `页面: ${payload.page_title}`,
-      `模型: ${payload.model_label}`,
+      formatModelTag(payload.model_label),
       `场景: ${payload.scene}`,
       `文件: ${payload.file_summary}`,
       `追溯: ${payload.trace_summary}`,
@@ -1139,35 +1192,34 @@ document.querySelectorAll(".nav-btn").forEach((el) => {
 document.querySelectorAll('[data-upload-trigger="eval:single"]').forEach((button) => {
   button.addEventListener("click", (event) => {
     event.preventDefault();
-    fileInputs.eval.click();
+    openSingleUploadAction("eval");
   });
 });
 
 document.querySelectorAll('[data-upload-trigger="analysis:single"]').forEach((button) => {
   button.addEventListener("click", (event) => {
     event.preventDefault();
-    fileInputs.analysis.click();
+    openSingleUploadAction("analysis");
   });
 });
 
 document.querySelectorAll("[data-scene-trigger]").forEach((button) => {
   button.addEventListener("click", () => {
     const [page, scene] = button.dataset.sceneTrigger.split(":");
-    setScene(page, scene);
+    changeSceneAction(page, scene);
   });
 });
 
 document.querySelectorAll('[data-compare-btn]').forEach((button) => {
   button.addEventListener("click", () => {
     const page = button.dataset.compareBtn;
-    setScene(page, "compare");
+    changeSceneAction(page, "compare");
   });
 });
 
 document.querySelectorAll("[data-compare-mode]").forEach((button) => {
   button.addEventListener("click", () => {
-    state.compare[button.dataset.compareKind].mode = button.dataset.compareMode;
-    render();
+    changeCompareModeAction(button.dataset.compareKind, button.dataset.compareMode);
   });
 });
 
@@ -1175,46 +1227,30 @@ document.querySelectorAll("[data-setting-toggle]").forEach((toggle) => {
   toggle.addEventListener("click", async () => {
     toggle.classList.toggle("on");
     const key = toggle.dataset.settingToggle;
-    if (key === "trace") settingsState.trace = toggle.classList.contains("on");
-    if (key === "preprocess-resample") settingsState.preprocessResample = toggle.classList.contains("on");
-    if (key === "preprocess-to-mono") settingsState.preprocessToMono = toggle.classList.contains("on");
-    if (key === "preprocess-extract-audio") settingsState.preprocessExtractAudio = toggle.classList.contains("on");
-    await persistSettings({
-      trace: settingsState.trace,
-      preprocess_resample: settingsState.preprocessResample,
-      preprocess_to_mono: settingsState.preprocessToMono,
-      preprocess_extract_audio: settingsState.preprocessExtractAudio,
-    });
+    await toggleSettingAction(key, toggle.classList.contains("on"));
   });
 });
 
 document.querySelector('[data-setting-value="default-eval-model"]')?.addEventListener("click", async () => {
-  state.models.eval = state.models.eval === "dnsmos" ? "nisqa" : "dnsmos";
-  await persistSettings({ default_eval_model: state.models.eval });
+  await toggleDefaultEvalModelAction();
 });
 
 document.querySelector('[data-setting-value="compare-default"]')?.addEventListener("click", async (event) => {
   const target = event.currentTarget;
-  settingsState.compareDefault = settingsState.compareDefault === "free" ? "base" : "free";
-  target.textContent = settingsState.compareDefault === "free" ? "自由对比" : "基准对比";
-  ["eval", "analysis"].forEach((kind) => {
-    if (state[`${kind}Scene`] === "compare") state.compare[kind].mode = settingsState.compareDefault;
-  });
-  await persistSettings({ compare_default: settingsState.compareDefault });
+  await updateCompareDefaultAction();
+  target.textContent = formatCompareModeLabel(runtimeState.settings.compareDefault);
 });
 
 document.querySelector('[data-setting-value="export-format"]')?.addEventListener("click", async (event) => {
   const target = event.currentTarget;
-  settingsState.exportFormat = nextExportFormat(settingsState.exportFormat);
-  target.textContent = formatExportSetting(settingsState.exportFormat);
-  await persistSettings({ export_format: settingsState.exportFormat });
+  await updateExportFormatAction();
+  target.textContent = formatExportSetting(runtimeState.settings.exportFormat);
 });
 
 document.querySelector('[data-setting-value="history-retention-days"]')?.addEventListener("click", async (event) => {
   const target = event.currentTarget;
-  settingsState.historyRetentionDays = nextHistoryRetentionDays(settingsState.historyRetentionDays);
-  target.textContent = formatHistoryRetentionDays(settingsState.historyRetentionDays);
-  await persistSettings({ history_retention_days: settingsState.historyRetentionDays });
+  await updateHistoryRetentionAction();
+  target.textContent = formatHistoryRetentionDays(runtimeState.settings.historyRetentionDays);
 });
 
 document.querySelectorAll(".detail-switch").forEach((group) => {
@@ -1223,8 +1259,7 @@ document.querySelectorAll(".detail-switch").forEach((group) => {
   group.querySelectorAll("[data-detail-view]").forEach((button) => {
     button.addEventListener("click", () => {
       if (!kind) return;
-      state.detailViews[kind] = button.dataset.detailView;
-      render();
+      changeCompareDetailViewAction(kind, button.dataset.detailView);
     });
   });
 });
@@ -1235,13 +1270,7 @@ document.querySelectorAll(".detail-switch").forEach((group) => {
   group.querySelectorAll("[data-single-detail-view]").forEach((button) => {
     button.addEventListener("click", () => {
       if (!kind) return;
-      state.detailViews[kind] = button.dataset.singleDetailView;
-      const single = runtimeState.single[kind];
-      if (single?.status === "success" && single.result && single.file) {
-        applySingleEvaluation(kind, single.result, single.file.name);
-      } else {
-        render();
-      }
+      changeSingleDetailViewAction(kind, button.dataset.singleDetailView);
     });
   });
 });
@@ -1251,31 +1280,27 @@ document.querySelectorAll(".history-filters").forEach((group) => {
     button.addEventListener("click", () => {
       group.querySelectorAll(".small-btn").forEach((node) => node.classList.remove("active"));
       button.classList.add("active");
-      runtimeState.history.filter = button.dataset.historyFilter || "all";
-      renderHistory();
+      applyHistoryFilterAction(button.dataset.historyFilter || "all");
     });
   });
 });
 
 document.querySelectorAll("[data-export-trigger]").forEach((button) => {
   button.addEventListener("click", () => {
-    downloadExport(button.dataset.exportTrigger);
+    exportPageAction(button.dataset.exportTrigger);
   });
 });
 
 document.querySelectorAll("[data-reset-trigger]").forEach((button) => {
   button.addEventListener("click", () => {
-    resetPageState(button.dataset.resetTrigger);
+    resetPageAction(button.dataset.resetTrigger);
   });
 });
 
 document.querySelectorAll("[data-model-scope]").forEach((button) => {
   button.addEventListener("click", () => {
     const scope = button.dataset.modelScope;
-    state.models[scope] = button.dataset.modelKey;
-    runtimeState.compareGroups[scope === "eval" ? "eval" : "analysis"] = {};
-    runtimeState.compareResults[scope === "eval" ? "eval" : "analysis"] = null;
-    render();
+    switchModelAction(scope, button.dataset.modelKey);
   });
 });
 
@@ -1318,13 +1343,13 @@ function addCompareGroup(kind) {
 }
 
 document.querySelectorAll("[data-add-group]").forEach((button) => {
-  button.addEventListener("click", () => addCompareGroup(button.dataset.addGroup));
+  button.addEventListener("click", () => addCompareGroupAction(button.dataset.addGroup));
 });
 
 document.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-history-detail]");
   if (!button) return;
-  await showHistoryDetail(button.dataset.historyDetail);
+  await showHistoryDetailAction(button.dataset.historyDetail);
 });
 
 rememberInitialMarkup();

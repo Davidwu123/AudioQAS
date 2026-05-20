@@ -238,8 +238,10 @@ test("real speech dnsmos single-file render stays aligned with preview", async (
     assert.equal(app.text("[data-eval-file-summary]").includes("Stereo"), true);
     assert.equal(app.text("[data-eval-advice]").length > 0, true);
     assert.equal(app.text('[data-page="eval"] .pill-grade').length > 0, true);
+    assert.equal(app.window.document.querySelector('[data-page="eval"] .pill-grade')?.getAttribute("style")?.includes("background:"), true);
     assert.equal(app.text('[data-page="eval"] .overview-summary p').length > 0, true);
-    assert.deepEqual(app.texts("[data-eval-model-grid] .score-card .label"), ["OVRL", "SIG", "BAK"]);
+    assert.deepEqual(app.texts("[data-eval-model-grid] .score-card .label"), ["整体听感 · OVRL", "语音清晰度 · SIG", "背景干净度 · BAK", "处理建议"]);
+    assert.match(app.window.document.querySelector('[data-eval-model-grid] .score-card .bar span')?.getAttribute("style") || "", /var\(--(?:good|fair|excellent|poor|bad|warn)\)/);
     assert.equal(app.text('[data-single-detail-table="eval"] thead tr').includes("整体听感"), true);
     assert.equal(app.text("[data-eval-trace]").includes("DNSMOS"), true);
     await app.click('[data-single-detail-kind="eval"][data-single-detail-view="signal"]');
@@ -263,7 +265,7 @@ test("real speech nisqa single-file render stays aligned with preview", async ()
     await app.uploadSingle("eval", "test1.wav");
     assert.equal(app.text("[data-eval-advice]").length > 0, true);
     assert.equal(app.text('[data-page="eval"] .pill-grade').includes("·"), true);
-    assert.deepEqual(app.texts("[data-eval-model-grid] .score-card .label"), ["OVRL", "NOI", "DIS", "COL", "LOUD"]);
+    assert.deepEqual(app.texts("[data-eval-model-grid] .score-card .label"), ["整体质量 · OVRL", "噪声感知 · NOI", "连续性 · DIS", "染色感 · COL", "响度 · LOUD"]);
     assert.equal(app.text('[data-single-detail-table="eval"] thead tr').includes("整体质量"), true);
     await app.click('[data-single-detail-kind="eval"][data-single-detail-view="signal"]');
     assert.equal(app.text('[data-single-detail-table="eval"] thead tr').includes("综合响度"), true);
@@ -289,7 +291,7 @@ test("real analysis audiobox single-file render stays aligned with preview", asy
     assert.equal(app.text("[data-analysis-advice]").length > 0, true);
     assert.equal(app.text('[data-page="analysis"] .pill-grade').includes("·"), true);
     assert.equal(app.text('[data-page="analysis"] .overview-summary p').length > 0, true);
-    assert.deepEqual(app.texts('[data-page="analysis"] .score-card .label'), ["PQ", "CE", "CU", "PC"]);
+    assert.deepEqual(app.texts('[data-page="analysis"] .score-card .label'), ["制作质量 · PQ", "内容享受 · CE", "内容有用 · CU", "制作复杂度 · PC"]);
     assert.equal(app.text("[data-analysis-file-summary]").includes("48000Hz"), true);
     assert.equal(app.text('[data-single-detail-table="analysis"] thead tr').includes("制作质量"), true);
     await app.click('[data-single-detail-kind="analysis"][data-single-detail-view="signal"]');
@@ -312,7 +314,9 @@ test("real speech compare render stays aligned with preview", async () => {
     await app.openCompare("eval");
     await app.uploadCompare("eval", { A: "test1.wav", B: "test2.wav" });
     assert.equal(app.text('[data-compare-summary="eval"] strong').includes("推荐版本"), true);
+    assert.notEqual(app.window.document.querySelectorAll('[data-compare-summary="eval"] .compare-summary-default .compare-kpi span')[0]?.className, "", true);
     assert.equal(app.text('[data-compare-ranking="eval"] .ranking-list').includes("test1.wav") || app.text('[data-compare-ranking="eval"] .ranking-list').includes("test2.wav"), true);
+    assert.notEqual(app.window.document.querySelector('[data-compare-ranking="eval"] .ranking-card.top .ranking-score strong')?.className, "", true);
     assert.equal(app.text('[data-compare-table="eval"] thead tr').includes("整体听感"), true);
     await app.click('[data-compare-table="eval"] [data-detail-view="signal"]');
     assert.equal(app.text('[data-compare-table="eval"] thead tr').includes("综合响度"), true);
@@ -342,6 +346,7 @@ test("real speech compare nisqa render keeps full dimensions and base mode recom
     assert.equal(app.text('[data-compare-table="eval"] thead tr').includes("连续性"), true);
     await app.click('[data-compare-kind="eval"][data-compare-mode="base"]');
     await waitFor(app.window, () => app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("比基准 A"), "real nisqa base summary A");
+    assert.notEqual(app.window.document.querySelectorAll('[data-compare-summary="eval"] .compare-summary-alt .compare-kpi span')[0]?.className, "", true);
     assert.equal(app.text('[data-compare-ranking="eval"] .ranking-list').includes("vs A"), true);
     await app.click('[data-base-root="eval"] .base-pill:nth-child(2)');
     await waitFor(app.window, () => app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("基准 B"), "real nisqa base summary B");
