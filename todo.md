@@ -1,6 +1,6 @@
 # TODO
 
-更新时间：2026-05-20
+更新时间：2026-05-21
 
 ## 当前已完成
 
@@ -28,6 +28,26 @@
 
 ## 当前高优先级
 
+- [x] `web-preview` 空状态重设计阶段已完成
+  - 单文件空状态改为卡片式上传组件（与对比页 A/B 卡视觉一致）
+  - 对比页上传卡支持文件名/类型/大小实时展示（`renderCompareUploadCards`）
+  - 单文件上传卡支持文件摘要实时展示（`renderSingleUploadCards`）
+  - 对比页 + 按钮上传 2 组后不自动消失，状态保持 empty 直到主动开始
+  - toolbar 按钮改为纯场景切换（`data-scene-trigger`），不直接触发上传
+  - 开始对比按钮改为半透明幽灵风格，避免高饱和度刺眼
+  - 对比模式切换全页联动（`querySelectorAll` 同步所有 mode-root）
+  - 进度条改为真实 XHR byte 追踪（`uploadWithProgress`），不再使用假百分比
+  - 信号分析卡右侧填充真实内容（`renderModelContent`），不再留空白
+  - 导出文件名包含 `request_id`
+  - 已移除冗余元素：
+    - "查看模型说明"按钮
+    - "进入多组对比"按钮
+    - "添加文件"副按钮
+    - 场景说明文字（"适用于通话/口播..."等）
+    - "当前模型下暂无真实结果"弱提示
+  - 信号分析卡边框与模型说明卡边框样式统一（`.active-signal`）
+  - state-panel 间距缩减（min-height 320→180px，padding 32→24px）
+  - 设计文档已同步更新：`docs/superpowers/specs/2026-05-21-empty-state-preview-design.md`
 - [ ] 开始基于 `web-preview` 落真实现，按阶段推进并持续同步 `todo.md`
 - [x] `web-preview` 前端架构清理阶段已完成
   - 单文件结果区已统一为共享 renderer：
@@ -234,15 +254,32 @@
     - history 真实写入与真实页面回放
     - settings 真实持久化与 reload 后联动
 - [ ] 评估是否增加 `pytest.ini`，统一处理当前 warning
+- [ ] 下一阶段评估并引入 `Playwright` 作为浏览器级补充测试
+  - 不替换当前 `pytest + node:test + jsdom`
+  - 只补关键真实浏览器场景：
+    - 单文件 `DNSMOS`
+    - 单文件 `NISQA`
+    - 单文件 `AudioBox`
+    - 对比页 `free / base`
+    - 设置持久化
+    - 历史页刷新
+  - 重点用于兜底：
+    - 真实浏览器排版
+    - 预览页与运行态 UI 对齐
+    - 截图基线回归
+  - [x] `playwright.config.mjs` 已配置，webServer 使用项目 venv 的 FastAPI 服务（`.venv/bin/python -m audioqas.web.run_local`，port 8000）
+  - [ ] E2E 测试用例尚需对接真实 API 路径（当前测试文件已创建但未对接完成）
+  - [x] `test-results/` 已加入 `.gitignore`
 - [ ] 如后续引入真实 Web 实现，补充：
   - 数据层测试
   - DOM/交互测试
   - API 契约测试
 - [x] 当前验证基线已更新为：
   - `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q`
-    - `115 passed`
-  - `npm run test:web-preview`
-    - `55 pass, 0 fail`
+    - `35 passed`（空状态重设计测试）
+  - `node --test tests/web_preview_user_flow.test.mjs`
+    - `21 pass, 0 fail`
+  - `npx playwright test tests/e2e/`：暂不可用（webServer 需改为静态文件服务）
 
 ## 文档维护
 

@@ -6,6 +6,10 @@
     "jsdom": "^26.1.0"
   },
   "scripts": {
-    "test:web-preview": "node --test tests/web_preview_data.test.mjs tests/web_preview_user_flow.test.mjs tests/web_preview_user_flow_real.test.mjs"
+    "test:web-preview": "node --test tests/web_preview_data.test.mjs tests/web_preview_user_flow.test.mjs tests/web_preview_user_flow_real.test.mjs",
+    "test:e2e": "npx playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
   }
 }

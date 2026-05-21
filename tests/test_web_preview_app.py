@@ -17,7 +17,7 @@ def test_web_preview_app_file_exists():
 def test_web_preview_app_tracks_single_file_runtime_state():
     text = APP_PATH.read_text(encoding="utf-8")
     assert "single:" in text
-    assert 'status: "idle"' in text
+    assert 'status: "empty"' in text
     assert "result: null" in text
     assert "error: null" in text
 
@@ -40,17 +40,18 @@ def test_web_preview_html_uses_explicit_single_file_entry_labels():
     assert 'data-upload-trigger="eval:batch"' not in html
     assert 'data-upload-trigger="analysis:batch"' not in html
     assert "+ 添加文件" not in html
-    assert 'data-upload-trigger="eval:single">单文件测评' in html
+    assert 'data-scene-trigger="eval:single"' in html
+    assert 'data-single-btn="eval"' in html
     assert 'data-scene-trigger="eval:compare"' in html
     assert "对比评测" in html
-    assert 'data-upload-trigger="analysis:single">单文件分析' in html
+    assert 'data-scene-trigger="analysis:single"' in html
+    assert 'data-single-btn="analysis"' in html
     assert 'data-scene-trigger="analysis:compare"' in html
     assert "对比分析" in html
 
 
 def test_web_preview_app_surfaces_render_errors():
     text = APP_PATH.read_text(encoding="utf-8")
-    assert "页面渲染失败" in text
     assert "error instanceof Error ? error.message : String(error)" in text
 
 
@@ -151,6 +152,10 @@ def test_runtime_state_has_explicit_compare_slice():
     assert "compare: {" in text
     assert "groups:" in text
     assert "results:" in text
+    assert "status: {" in text
+    assert 'eval: "empty"' in text
+    assert 'analysis: "empty"' in text
+    assert "error: {" in text
 
 
 def test_runtime_state_has_explicit_settings_slice():
@@ -186,3 +191,92 @@ def test_compact_five_model_cards_keep_stronger_visual_weight_than_signal_cards(
     assert ".four-col.compact-five .number{" in html
     assert "font-size:38px;" in html
     assert "grid-template-columns:repeat(5, minmax(0,1fr));" in html
+
+
+def test_app_has_state_branch_rendering_functions():
+    text = APP_PATH.read_text(encoding="utf-8")
+    assert "function getSceneStatus(" in text
+    assert "function getActiveSceneName(" in text
+    assert "function renderStatePanels(" in text
+    assert "function startCompareAction(" in text
+
+
+def test_app_has_result_cache_and_key_helper():
+    text = APP_PATH.read_text(encoding="utf-8")
+    assert "const resultCache = {};" in text
+    assert "function getCacheKey(" in text
+
+
+def test_app_no_remember_initial_markup():
+    text = APP_PATH.read_text(encoding="utf-8")
+    assert "rememberInitialMarkup" not in text
+    assert "initialMarkup" not in text
+
+
+def test_app_compare_does_not_auto_trigger_on_upload():
+    text = APP_PATH.read_text(encoding="utf-8")
+    assert "selected >= 2" not in text
+
+
+def test_app_single_status_values_match_spec():
+    text = APP_PATH.read_text(encoding="utf-8")
+    assert 'status: "running"' in text
+    assert 'status: "done"' in text
+    assert 'status: "error"' in text
+    assert 'status: "empty"' in text
+
+
+def test_html_has_state_panels_and_compare_state_sub_panels():
+    html = HTML_PATH.read_text(encoding="utf-8")
+    assert 'data-state-panel' in html
+    assert 'data-compare-state' in html
+    assert 'data-compare-start' in html
+    assert 'data-compare-upload-group' in html
+
+
+def test_html_empty_scene_is_default_active():
+    html = HTML_PATH.read_text(encoding="utf-8")
+    assert 'class="scenario active" data-scene="empty"' in html
+
+
+def test_app_single_upload_entry_uses_card_click():
+    text = APP_PATH.read_text(encoding="utf-8")
+    html = HTML_PATH.read_text(encoding="utf-8")
+    assert 'data-single-upload-card="eval"' in html
+    assert 'data-single-upload-card="analysis"' in html
+    assert 'data-upload-trigger="eval:single"' not in html
+    assert 'data-upload-trigger="analysis:single"' not in html
+    assert 'data-upload-trigger="eval:single"' not in text
+    assert 'data-upload-trigger="analysis:single"' not in text
+    assert "[data-single-upload-card]" in text
+
+
+def test_app_upload_with_progress_falls_back_to_fetch():
+    text = APP_PATH.read_text(encoding="utf-8")
+    assert "function uploadWithProgress(" in text
+    assert "XMLHttpRequest.prototype" in text
+    assert "hasXHRProgress" in text
+    assert "fetch(url, { method: \"POST\"" in text
+
+
+def test_app_compare_upload_sets_ready_status():
+    text = APP_PATH.read_text(encoding="utf-8")
+    assert 'runtimeState.compare.status[kind] = "ready"' in text
+
+
+def test_app_switch_model_caches_compare_context():
+    text = APP_PATH.read_text(encoding="utf-8")
+    assert "groups: runtimeState.compare.groups[scope]" in text
+    assert "base: state.compare[scope].base" in text
+    assert "requestId: runtimeState.requests[scope].compare" in text
+    assert "cachedCompare.groups" in text
+    assert "cachedCompare.base" in text
+    assert "cachedCompare.requestId" in text
+
+
+def test_html_has_error_banner_in_compare_done_panel():
+    html = HTML_PATH.read_text(encoding="utf-8")
+    assert 'data-error-banner="eval-compare"' in html
+    assert 'data-error-banner="analysis-compare"' in html
+
+

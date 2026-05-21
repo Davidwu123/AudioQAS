@@ -1,7 +1,7 @@
 const state = {
   page: "eval",
-  evalScene: "single",
-  analysisScene: "single",
+  evalScene: "empty",
+  analysisScene: "empty",
   models: {
     eval: "dnsmos",
     analysis: "audiobox",
@@ -18,8 +18,8 @@ const state = {
 
 const runtimeState = {
   single: {
-    eval: { file: null, status: "idle", result: null, error: null },
-    analysis: { file: null, status: "idle", result: null, error: null },
+    eval: { file: null, status: "empty", result: null, error: null },
+    analysis: { file: null, status: "empty", result: null, error: null },
   },
   compare: {
     groups: {
@@ -27,6 +27,14 @@ const runtimeState = {
       analysis: {},
     },
     results: {
+      eval: null,
+      analysis: null,
+    },
+    status: {
+      eval: "empty",
+      analysis: "empty",
+    },
+    error: {
       eval: null,
       analysis: null,
     },
@@ -52,24 +60,17 @@ const runtimeState = {
   },
 };
 
+const resultCache = {};
+
+function getCacheKey(page, scene, modelKey) {
+  return `${page}_${scene}_${modelKey}`;
+}
+
 let requestCounter = 0;
-const initialMarkup = {};
 
 function nextRequestId(page, scene) {
   requestCounter += 1;
   return `req_${page}_${scene}_${String(requestCounter).padStart(4, "0")}`;
-}
-
-function rememberInitialMarkup() {
-  [
-    '[data-page="eval"] [data-scene="single"]',
-    '[data-page="eval"] [data-scene="compare"]',
-    '[data-page="analysis"] [data-scene="single"]',
-    '[data-page="analysis"] [data-scene="compare"]',
-  ].forEach((selector) => {
-    const node = document.querySelector(selector);
-    if (node) initialMarkup[selector] = node.innerHTML;
-  });
 }
 
 const {
@@ -172,25 +173,16 @@ function applySingleOverview(page, view, options = {}) {
 }
 
 function applySingleMetricCards(page, view) {
-  const metricCards = document.querySelectorAll(`[data-page="${page}"] .metric`);
-  metricCards.forEach((card, index) => {
-    const metric = view.signalCards[index];
-    if (!metric) return;
-    const label = card.querySelector(".label");
-    const value = card.querySelector(".value");
-    const stateNode = card.querySelector(".state");
-    const desc = card.querySelector(".desc");
-    if (label) label.textContent = metric.label || `${metric.key} · ${metric.unit}`;
-    if (value) {
-      value.textContent = metric.valueText;
-      value.className = `value ${metric.valueClass}`;
-    }
-    if (stateNode) {
-      stateNode.textContent = metric.stateText;
-      stateNode.className = `state ${metric.stateClass}`;
-    }
-    if (desc) desc.textContent = metric.description;
-  });
+  const grid = document.querySelector(`[data-page="${page}"] [data-${page === "eval" ? "eval" : "analysis"}-signal-grid]`);
+  if (!grid) return;
+  grid.innerHTML = view.signalCards.map((metric) => `
+    <div class="metric">
+      <div class="label">${metric.label || `${metric.key} · ${metric.unit}`}</div>
+      <div class="value ${metric.valueClass}">${metric.valueText}</div>
+      <div class="state ${metric.stateClass}">${metric.stateText}</div>
+      <div class="desc">${metric.description}</div>
+    </div>
+  `).join("");
 }
 
 function applySingleDetailTable(page, view, modelKey) {
@@ -244,11 +236,11 @@ function createHiddenCompareInput(kind, groupKey) {
     if (!file) return;
     runtimeState.compare.groups[kind][groupKey] = file;
     input.value = "";
-    renderCompareBuilder(kind);
-    const selected = Object.keys(runtimeState.compare.groups[kind]).length;
-    if (selected >= 2) {
-      await evaluateCompareUpload(kind);
+    const groupCount = Object.keys(runtimeState.compare.groups[kind]).length;
+    if (groupCount >= 2 && runtimeState.compare.status[kind] === "empty") {
+      runtimeState.compare.status[kind] = "ready";
     }
+    render();
   });
   document.body.appendChild(input);
   return input;
@@ -258,6 +250,57 @@ const compareFileInputs = {
   eval: {},
   analysis: {},
 };
+
+function uploadWithProgress(url, body, requestId, onProgress) {
+  let hasXHRProgress = false;
+  try {
+    hasXHRProgress = typeof XMLHttpRequest !== "undefined"
+      && new XMLHttpRequest().upload !== undefined
+      && XMLHttpRequest.prototype.upload !== undefined;
+  } catch { /* not a real browser XHR */ }
+  if (!hasXHRProgress) {
+    if (onProgress) { onProgress(10); onProgress(50); }
+    return fetch(url, { method: "POST", body, headers: { "X-Request-Id": requestId } })
+      .then(async (res) => {
+        if (!res.ok) {
+          const t = typeof res.text === "function" ? await res.text() : String(res.statusText);
+          throw new Error(explainUploadError(res.status, t));
+        }
+        if (onProgress) onProgress(100);
+        return res.json();
+      });
+  }
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.setRequestHeader("X-Request-Id", requestId);
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        onProgress(pct);
+      }
+    });
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch (err) {
+          reject(new Error(`Invalid JSON response: ${xhr.responseText.substring(0, 200)}`));
+        }
+      } else {
+        let errorPayload = xhr.responseText;
+        try {
+          errorPayload = JSON.parse(xhr.responseText);
+          errorPayload = errorPayload?.detail ?? errorPayload;
+        } catch { /* use raw text */ }
+        reject(new Error(explainUploadError(xhr.status, errorPayload)));
+      }
+    });
+    xhr.addEventListener("error", () => reject(new Error("Network error")));
+    xhr.addEventListener("abort", () => reject(new Error("Upload aborted")));
+    xhr.send(body);
+  });
+}
 
 function setSingleProgress(page, label, width) {
   const single = document.querySelector(`[data-scene-root="${page}"] [data-scene="single"]`);
@@ -298,9 +341,10 @@ function explainUploadError(status, bodyText) {
 }
 
 function markSingleLoading(page, file) {
-  runtimeState.single[page] = { file, status: "loading", result: null, error: null };
+  runtimeState.single[page] = { file, status: "running", result: null, error: null };
   const requestId = runtimeState.requests[page]?.single;
   setSingleProgress(page, requestId ? `上传中 10% · ${requestId}` : "上传中 10%", "10%");
+  renderStatePanels(page);
 }
 
 async function evaluateUploadedFile(page, file) {
@@ -320,38 +364,24 @@ async function evaluateUploadedFile(page, file) {
   sceneRoot.querySelectorAll(".scenario").forEach((node) => node.classList.toggle("active", node === single));
   state[`${page}Scene`] = "single";
   markSingleLoading(page, file);
-  setSingleProgress(page, `预处理中 25% · ${requestId}`, "25%");
+  setSingleProgress(page, `上传中 · ${requestId}`, "0%");
 
   try {
-    const response = await fetch("/api/evaluate/upload", {
-      method: "POST",
-      body: form,
-      headers: {
-        "X-Request-Id": requestId,
-      },
+    const payload = await uploadWithProgress("/api/evaluate/upload", form, requestId, (pct) => {
+      const label = pct < 100 ? `上传中 ${pct}% · ${requestId}` : `上传完成 · ${requestId}`;
+      setSingleProgress(page, label, `${Math.min(pct, 50)}%`);
     });
-    setSingleProgress(page, `模型评测中 60% · ${requestId}`, "60%");
-    if (!response.ok) {
-      let errorPayload = "";
-      if (typeof response.json === "function") {
-        const json = await response.json();
-        errorPayload = json?.detail ?? json;
-      } else if (typeof response.text === "function") {
-        errorPayload = await response.text();
-      }
-      throw new Error(explainUploadError(response.status, errorPayload));
-    }
-    const payload = await response.json();
-    setSingleProgress(page, `信号分析中 85% · ${requestId}`, "85%");
-    runtimeState.single[page] = { file, status: "success", result: payload, error: null };
+    setSingleProgress(page, `模型评测中 · ${requestId}`, "55%");
+    runtimeState.single[page] = { file, status: "done", result: payload, error: null };
     applySingleEvaluation(page, payload, file.name);
-    setSingleProgress(page, `100% · ${requestId}`, "100%");
+    setSingleProgress(page, page === "eval" ? "评测完成 100%" : "分析完成 100%", "100%");
+    const progressPanel = document.querySelector(`[data-scene-root="${page}"] [data-scene="single"] .progress-panel`);
+    if (progressPanel) progressPanel.classList.add("done");
+    renderStatePanels(page);
   } catch (error) {
     console.error(error);
     runtimeState.single[page] = { file, status: "error", result: null, error: String(error) };
-    setSingleProgress(page, `失败 · ${requestId}`, "0%");
-    const detail = error instanceof Error ? error.message : String(error);
-    window.alert(`本机评测失败，请确认本地 Python 服务已启动且模型依赖可用。\n\n请求 ID：${requestId}\n页面渲染失败：${detail}`);
+    render();
   }
 }
 
@@ -364,15 +394,15 @@ async function evaluateCompareUpload(kind) {
     .sort(([a], [b]) => a.localeCompare(b));
   if (selectedGroups.length < 2) return;
 
+  runtimeState.compare.status[kind] = "running";
+  render();
+
   const sceneRoot = document.querySelector(`[data-scene-root="${kind}"]`);
   const compare = sceneRoot?.querySelector('[data-scene="compare"]');
-  sceneRoot?.querySelectorAll(".scenario").forEach((node) => node.classList.toggle("active", node === compare));
-  state[`${kind}Scene`] = "compare";
-
   const progressLabel = compare?.querySelector(".progress-label");
   const progressFill = compare?.querySelector(".progress-fill");
-  if (progressLabel) progressLabel.textContent = `对比处理中 · ${requestId}`;
-  if (progressFill) progressFill.style.width = "35%";
+  if (progressLabel) progressLabel.textContent = `上传中 · ${requestId}`;
+  if (progressFill) progressFill.style.width = "0%";
 
   const multipart = new FormData();
   multipart.append("domain", domain);
@@ -385,26 +415,26 @@ async function evaluateCompareUpload(kind) {
   }
 
   try {
-    const response = await fetch("/api/evaluate/compare-upload", {
-      method: "POST",
-      body: multipart,
-      headers: {
-        "X-Request-Id": requestId,
-      },
+    const payload = await uploadWithProgress("/api/evaluate/compare-upload", multipart, requestId, (pct) => {
+      const label = pct < 100 ? `上传中 ${pct}% · ${requestId}` : `上传完成 · ${requestId}`;
+      if (progressLabel) progressLabel.textContent = label;
+      if (progressFill) progressFill.style.width = `${Math.min(pct, 50)}%`;
     });
-    if (!response.ok) {
-      throw new Error(`Compare upload failed: ${response.status}`);
-    }
-    const payload = await response.json();
+    if (progressLabel) progressLabel.textContent = `对比处理中 · ${requestId}`;
+    if (progressFill) progressFill.style.width = "55%";
     runtimeState.compare.results[kind] = payload;
+    runtimeState.compare.status[kind] = "done";
+    render();
     renderCompareFromRuntime(kind, payload);
-    if (progressLabel) progressLabel.textContent = `100% · ${requestId}`;
+    if (progressLabel) progressLabel.textContent = kind === "eval" ? "对比评测完成 100%" : "对比分析完成 100%";
     if (progressFill) progressFill.style.width = "100%";
+    const progressPanel = compare?.querySelector(".progress-panel");
+    if (progressPanel) progressPanel.classList.add("done");
   } catch (error) {
     console.error(error);
-    if (progressLabel) progressLabel.textContent = `失败 · ${requestId}`;
-    if (progressFill) progressFill.style.width = "0%";
-    window.alert(`本机对比评测失败，请确认本地 Python 服务已启动且模型依赖可用。\n\n请求 ID：${requestId}`);
+    runtimeState.compare.status[kind] = "error";
+    runtimeState.compare.error[kind] = error instanceof Error ? error.message : String(error);
+    render();
   }
 }
 
@@ -426,27 +456,17 @@ function setScene(page, scene) {
 }
 
 function resetPageState(page) {
-  runtimeState.single[page] = { file: null, status: "idle", result: null, error: null };
+  runtimeState.single[page] = { file: null, status: "empty", result: null, error: null };
   runtimeState.compare.results[page] = null;
   runtimeState.compare.groups[page] = {};
+  runtimeState.compare.status[page] = "empty";
+  runtimeState.compare.error[page] = null;
   runtimeState.requests[page].single = null;
   runtimeState.requests[page].compare = null;
   state.detailViews[page] = "metrics";
   state.compare[page] = { mode: runtimeState.settings.compareDefault, base: "A" };
   compareGroupState[page] = 0;
-
-  const selectors = [
-    `[data-page="${page}"] [data-scene="single"]`,
-    `[data-page="${page}"] [data-scene="compare"]`,
-  ];
-  selectors.forEach((selector) => {
-    const node = document.querySelector(selector);
-    if (node && initialMarkup[selector]) {
-      node.innerHTML = initialMarkup[selector];
-    }
-  });
-
-  state[`${page}Scene`] = "single";
+  state[`${page}Scene`] = "empty";
   render();
 }
 
@@ -476,6 +496,8 @@ function applySettingsPayload(payload) {
 }
 
 function openSingleUploadAction(page) {
+  state[`${page}Scene`] = "single";
+  render();
   fileInputs[page]?.click();
 }
 
@@ -537,9 +559,40 @@ function resetPageAction(page) {
 }
 
 function switchModelAction(scope, modelKey) {
+  const currentModel = state.models[scope];
+  if (runtimeState.single[scope].status === "done") {
+    resultCache[getCacheKey(scope, "single", currentModel)] = runtimeState.single[scope];
+  }
+  if (runtimeState.compare.status[scope] === "done") {
+    resultCache[getCacheKey(scope, "compare", currentModel)] = {
+      results: runtimeState.compare.results[scope],
+      groups: runtimeState.compare.groups[scope],
+      base: state.compare[scope].base,
+      requestId: runtimeState.requests[scope].compare,
+    };
+  }
   state.models[scope] = modelKey;
-  runtimeState.compare.groups[scope === "eval" ? "eval" : "analysis"] = {};
-  runtimeState.compare.results[scope === "eval" ? "eval" : "analysis"] = null;
+  const cachedSingle = resultCache[getCacheKey(scope, "single", modelKey)];
+  if (cachedSingle) {
+    runtimeState.single[scope] = { ...cachedSingle };
+  } else {
+    runtimeState.single[scope] = { file: null, status: "empty", result: null, error: null };
+  }
+  const cachedCompare = resultCache[getCacheKey(scope, "compare", modelKey)];
+  if (cachedCompare) {
+    runtimeState.compare.results[scope] = cachedCompare.results;
+    runtimeState.compare.groups[scope] = cachedCompare.groups;
+    state.compare[scope].base = cachedCompare.base;
+    runtimeState.requests[scope].compare = cachedCompare.requestId;
+    runtimeState.compare.status[scope] = "done";
+    runtimeState.compare.error[scope] = null;
+  } else {
+    runtimeState.compare.results[scope] = null;
+    runtimeState.compare.groups[scope] = {};
+    runtimeState.compare.status[scope] = "empty";
+    runtimeState.compare.error[scope] = null;
+    runtimeState.requests[scope].compare = null;
+  }
   render();
 }
 
@@ -556,7 +609,7 @@ function changeCompareDetailViewAction(kind, view) {
 function changeSingleDetailViewAction(kind, view) {
   state.detailViews[kind] = view;
   const single = runtimeState.single[kind];
-  if (single?.status === "success" && single.result && single.file) {
+  if (single?.status === "done" && single.result && single.file) {
     applySingleEvaluation(kind, single.result, single.file.name);
   } else {
     render();
@@ -569,7 +622,7 @@ function addCompareGroupAction(kind) {
 
 function buildExportPayload(page) {
   const single = runtimeState.single[page];
-  if (single?.status === "success" && single.result) {
+  if (single?.status === "done" && single.result) {
     return {
       page,
       scene: "single",
@@ -600,12 +653,13 @@ function downloadExport(page) {
     return;
   }
   const scene = exportPayload.scene;
+  const reqId = exportPayload.request_id || "unknown";
   const download = (content, type, ext) => {
     const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `audioqas_${page}_${scene}.${ext}`;
+    link.download = `audioqas_${page}_${scene}_${reqId}.${ext}`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -642,40 +696,23 @@ function renderModelContent(scope) {
   });
   const toolbar = document.querySelector(`[data-toolbar-model="${scope}"]`);
   if (toolbar) toolbar.textContent = config.toolbar;
-  const docButton = document.querySelector(`[data-model-doc="${scope}"]`);
-  if (docButton) docButton.textContent = config.docLabel;
 
-  if (scope === "eval") {
-    if (runtimeState.single.eval.status === "success") {
-      return;
-    }
-    const summary = document.querySelector("[data-eval-file-summary]");
-    if (summary) {
-      summary.textContent = modelKey === "nisqa"
-        ? "45.3s · 48kHz · Stereo · 当前模型 NISQA"
-        : "45.3s · 48kHz · Stereo · 当前模型 DNSMOS";
-    }
-    const trace = document.querySelector("[data-eval-trace]");
-    if (trace) {
-      trace.textContent = modelKey === "nisqa"
-        ? "原始文件 → 转单声道 → 保持 48kHz → 送入 NISQA"
-        : "原始文件 → 转单声道 → 重采样到 16kHz → 送入 DNSMOS";
-    }
-    const progress = document.querySelector("[data-eval-progress-model]");
-    if (progress) {
-      progress.textContent = modelKey === "nisqa" ? "送入 NISQA" : "送入 DNSMOS";
-    }
-    const compareTag = document.querySelector('[data-compare-model-tag="eval"]');
-    if (compareTag) {
-      compareTag.textContent = formatModelTag(modelKey === "nisqa" ? "NISQA" : "DNSMOS");
-    }
-    const compareLabel = document.querySelector('[data-compare-primary-label="eval"]');
-    const compareSub = document.querySelector('[data-compare-primary-sub="eval"]');
-    if (compareLabel && compareSub) {
-      compareLabel.textContent = modelKey === "nisqa" ? "整体质量" : "整体听感";
-      compareSub.textContent = "OVRL";
-    }
+  const progressModel = document.querySelector(`[data-${scope}-progress-model]`);
+  if (progressModel) {
+    progressModel.textContent = modelKey === "nisqa" ? "送入 NISQA" : scope === "analysis" ? "送入 AudioBox" : "送入 DNSMOS";
   }
+
+  const signalSingle = document.querySelector(`[data-signal-note="${scope}-single"]`);
+  const signalCompare = document.querySelector(`[data-signal-note="${scope}-compare"]`);
+  const signalTitle = "信号分析";
+  const signalLines = scope === "eval"
+    ? [["适用", "通话噪声、回声、响度异常"], ["维度", "频谱、波形、SNR、响度包络"], ["用途", "定位语音退化根因"], ["局限", "需配合 MOS 模型做综合判断"]]
+    : [["适用", "音乐频段、混音平衡、响度分布"], ["维度", "频谱、波形、SNR、响度包络"], ["用途", "拆解制作问题、辅助美学评分"], ["局限", "不能替代主观听感"]];
+  [signalSingle, signalCompare].forEach((card) => {
+    if (!card) return;
+    card.classList.add("active-signal");
+    card.innerHTML = `<h4>${signalTitle}</h4><div class="fact-list">${buildFactRows(signalLines)}</div>`;
+  });
 }
 
 function applySingleEvaluation(page, payload, fileName) {
@@ -771,13 +808,105 @@ function getVisibleGroups(kind) {
   return defs.slice(0, count);
 }
 
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderCompareUploadCards(kind) {
+  const groups = runtimeState.compare.groups[kind] || {};
+  const groupKeys = Object.keys(groups);
+
+  document.querySelectorAll(`[data-compare-upload-group*="${kind}-"]`).forEach((card) => {
+    const key = card.dataset.compareUploadGroup;
+    const groupKey = key.replace(kind + "-", "");
+    const file = groups[groupKey];
+    const statusEl = card.querySelector(`[data-group-status="${key}"]`);
+    const hintEl = card.querySelector(".upload-hint");
+    const formatEl = card.querySelector(".format-hint");
+
+    if (file) {
+      card.classList.add("uploaded");
+      if (statusEl) statusEl.textContent = "已选择";
+      if (hintEl) {
+        const ext = file.name.split(".").pop().toUpperCase();
+        hintEl.innerHTML = `<span class="file-summary">${file.name}<span class="file-type-tag">${ext}</span><span class="file-size">${formatFileSize(file.size)}</span></span>`;
+      }
+      if (formatEl) formatEl.style.display = "none";
+    } else {
+      card.classList.remove("uploaded");
+      if (statusEl) statusEl.textContent = "未上传";
+      if (hintEl) hintEl.textContent = "点击上传文件";
+      if (formatEl) formatEl.style.display = "";
+    }
+  });
+
+  const startBtn = document.querySelector(`[data-compare-start="${kind}"]`);
+  if (startBtn) {
+    const count = groupKeys.length;
+    const ready = count >= 2;
+    startBtn.classList.toggle("disabled", !ready);
+    const hintEl = startBtn.querySelector(".hint");
+    if (hintEl) {
+      if (ready) {
+        hintEl.textContent = `已添加 ${count} 组: ${groupKeys.join("、")}`;
+      } else {
+        hintEl.textContent = `至少添加 2 组文件后开始对比${kind === "eval" ? "评测" : "分析"}`;
+      }
+    }
+  }
+}
+
+function renderSingleUploadCards() {
+  ["eval", "analysis"].forEach((page) => {
+    const card = document.querySelector(`[data-single-upload-card="${page}"]`);
+    if (!card) return;
+    const file = runtimeState.single[page]?.file;
+    const statusEl = card.querySelector(`[data-single-upload-status="${page}"]`);
+    const hintEl = card.querySelector(".upload-hint");
+    const formatEl = card.querySelector(".format-hint");
+    if (file) {
+      card.classList.add("uploaded");
+      if (statusEl) statusEl.textContent = "已选择";
+      if (hintEl) {
+        const ext = file.name.split(".").pop().toUpperCase();
+        hintEl.innerHTML = `<span class="file-summary">${file.name}<span class="file-type-tag">${ext}</span><span class="file-size">${formatFileSize(file.size)}</span></span>`;
+      }
+      if (formatEl) formatEl.style.display = "none";
+    } else {
+      card.classList.remove("uploaded");
+      if (statusEl) statusEl.textContent = "未上传";
+      if (hintEl) hintEl.textContent = "点击上传文件";
+      if (formatEl) formatEl.style.display = "";
+    }
+  });
+}
+
 function renderCompareBuilder(kind) {
   const builder = document.querySelector(`[data-group-builder="${kind}"]`);
   const baseRow = document.querySelector(`[data-base-root="${kind}"]`);
+  const baseRowDone = document.querySelector(`[data-base-root-done="${kind}"]`);
   if (!builder || !baseRow) return;
 
-  const visibleGroups = getVisibleGroups(kind);
   const selectedGroups = runtimeState.compare.groups[kind] || {};
+  const uploadedKeys = Object.keys(selectedGroups).sort();
+  const existingCards = builder.querySelectorAll(".group-card");
+  const addButton = builder.querySelector(`[data-add-group="${kind}"]`);
+
+  if (existingCards.length < uploadedKeys.length) {
+    const dataset = getCompareDataset(kind, state.models);
+    while (builder.querySelectorAll(".group-card").length < uploadedKeys.length) {
+      const idx = builder.querySelectorAll(".group-card").length;
+      const nextGroup = dataset.groups[idx];
+      if (!nextGroup) break;
+      const card = document.createElement("div");
+      card.className = "group-card";
+      builder.insertBefore(card, addButton || null);
+    }
+  }
+
+  const visibleGroups = getVisibleGroups(kind);
   builder.querySelectorAll(".group-card").forEach((card, index) => {
     const group = visibleGroups[index];
     if (!group) return;
@@ -791,20 +920,26 @@ function renderCompareBuilder(kind) {
     };
   });
 
-  baseRow.innerHTML = "";
-  visibleGroups.forEach((group) => {
-    const pill = document.createElement("button");
-    pill.className = "base-pill";
-    pill.type = "button";
-    pill.textContent = group.key;
-    pill.classList.toggle("active", state.compare[kind].base === group.key);
-    pill.addEventListener("click", () => {
-      state.compare[kind].base = group.key;
-      state.compare[kind].mode = "base";
-      render();
+  function renderBasePills(row) {
+    row.innerHTML = "";
+    if (uploadedKeys.length === 0) return;
+    uploadedKeys.forEach((key) => {
+      const pill = document.createElement("button");
+      pill.className = "base-pill";
+      pill.type = "button";
+      pill.textContent = key;
+      pill.classList.toggle("active", state.compare[kind].base === key);
+      pill.addEventListener("click", () => {
+        state.compare[kind].base = key;
+        state.compare[kind].mode = "base";
+        render();
+      });
+      row.appendChild(pill);
     });
-    baseRow.appendChild(pill);
-  });
+  }
+
+  renderBasePills(baseRow);
+  if (baseRowDone) renderBasePills(baseRowDone);
 }
 
 function renderCompareSection(kind) {
@@ -1101,7 +1236,93 @@ function renderDetailViews() {
   });
 }
 
-function renderModelControls() {
+function getSceneStatus(page, scene) {
+  if (scene === "single") return runtimeState.single[page].status;
+  if (scene === "compare") return runtimeState.compare.status[page];
+  return "empty";
+}
+
+function getActiveSceneName(page) {
+  const currentScene = state[`${page}Scene`];
+  if (currentScene === "single") {
+    const status = getSceneStatus(page, "single");
+    return status === "empty" ? "empty" : "single";
+  }
+  return currentScene;
+}
+
+function renderStatePanels(page) {
+  const sceneRoot = document.querySelector(`[data-scene-root="${page}"]`);
+  if (!sceneRoot) return;
+
+  const singleStatus = getSceneStatus(page, "single");
+  const compareStatus = getSceneStatus(page, "compare");
+  const activeScene = getActiveSceneName(page);
+
+  const notesRow = sceneRoot.querySelector('[data-notes-row]');
+  if (notesRow) notesRow.style.display = activeScene === "compare" ? "none" : "";
+
+  const singleScene = sceneRoot.querySelector('[data-scene="single"]');
+  if (singleScene) {
+    const progressPanel = singleScene.querySelector(".progress-panel");
+    if (progressPanel) {
+      progressPanel.style.display = (singleStatus === "running" || singleStatus === "done") ? "" : "none";
+      progressPanel.classList.toggle("done", singleStatus === "done");
+    }
+    const resultArea = singleScene.querySelector('[data-result-area]');
+    if (resultArea) resultArea.style.display = singleStatus === "done" ? "" : "none";
+    const modelGrid = singleScene.querySelector("[data-eval-model-grid]") || singleScene.querySelector("[data-analysis-model-grid]");
+    if (modelGrid) modelGrid.style.display = singleStatus === "done" ? "" : "none";
+    const signalGrid = singleScene.querySelector("[data-eval-signal-grid]") || singleScene.querySelector("[data-analysis-signal-grid]");
+    if (signalGrid) signalGrid.style.display = singleStatus === "done" ? "" : "none";
+    const detailTable = singleScene.querySelector(`[data-single-detail-table="${page}"]`);
+    if (detailTable) detailTable.style.display = singleStatus === "done" ? "" : "none";
+    const sections = singleScene.querySelectorAll(".section-title");
+    sections.forEach((s) => s.style.display = singleStatus === "done" ? "" : "none");
+    const errorPanel = singleScene.querySelector('[data-state-panel]');
+    if (errorPanel) {
+      errorPanel.style.display = singleStatus === "error" ? "" : "none";
+      if (singleStatus === "error") {
+        const reasonSpan = errorPanel.querySelector('[data-error-reason]');
+        if (reasonSpan) reasonSpan.textContent = runtimeState.single[page].error || "未知错误";
+      }
+    }
+  }
+
+  const compareScene = sceneRoot.querySelector('[data-scene="compare"]');
+  if (compareScene) {
+    const hasPriorResult = compareStatus === "error" && runtimeState.compare.results[page];
+    compareScene.querySelectorAll("[data-compare-state]").forEach((panel) => {
+      const panelState = panel.dataset.compareState;
+      const suffix = panelState.replace(page + "-", "");
+      let visible = suffix === compareStatus;
+      if (hasPriorResult && suffix === "done") visible = true;
+      panel.style.display = visible ? "" : "none";
+    });
+    const progressPanel = compareScene.querySelector(".progress-panel");
+    if (progressPanel) {
+      progressPanel.style.display = (compareStatus === "running" || compareStatus === "done") ? "" : "none";
+      progressPanel.classList.toggle("done", compareStatus === "done");
+    }
+    if (compareStatus === "error") {
+      const errorReason = compareScene.querySelector('[data-error-reason]');
+      if (errorReason) errorReason.textContent = runtimeState.compare.error[page] || "未知错误";
+      if (hasPriorResult) {
+        const donePanel = compareScene.querySelector(`[data-compare-state="${page}-done"]`);
+        const banner = donePanel?.querySelector(`[data-error-banner="${page}-compare"]`);
+        if (banner) {
+          banner.textContent = `本次对比失败，当前展示仍为上一次完成结果：${runtimeState.compare.error[page] || "未知错误"}`;
+          banner.style.display = "";
+        }
+      }
+    } else {
+      const donePanel = compareScene.querySelector(`[data-compare-state="${page}-done"]`);
+      const banner = donePanel?.querySelector(`[data-error-banner="${page}-compare"]`);
+      if (banner) banner.style.display = "none";
+    }
+  }
+}
+  function renderModelControls() {
   document.querySelectorAll("[data-model-scope]").forEach((button) => {
     button.classList.toggle("active", state.models[button.dataset.modelScope] === button.dataset.modelKey);
   });
@@ -1125,24 +1346,32 @@ function renderPageScaffolding() {
   });
 
   ["eval", "analysis"].forEach((page) => {
-    const activeScene = state[`${page}Scene`];
+    const activeScene = getActiveSceneName(page);
     document.querySelectorAll(`[data-scene-root="${page}"] .scenario`).forEach((el) => {
       el.classList.toggle("active", el.dataset.scene === activeScene);
     });
     const compareBtn = document.querySelector(`[data-compare-btn="${page}"]`);
     if (compareBtn) {
-      compareBtn.classList.toggle("active", activeScene === "compare");
+      compareBtn.classList.toggle("active", state[`${page}Scene`] === "compare");
+    }
+    const singleBtn = document.querySelector(`[data-single-btn="${page}"]`);
+    if (singleBtn) {
+      singleBtn.classList.toggle("active", state[`${page}Scene`] !== "compare");
     }
     const basePicker = document.querySelector(`[data-base-picker="${page}"]`);
     if (basePicker) {
       basePicker.classList.toggle("active", state.compare[page].mode === "base");
     }
+    const basePickerDone = document.querySelector(`[data-base-picker-done="${page}"]`);
+    if (basePickerDone) {
+      basePickerDone.classList.toggle("active", state.compare[page].mode === "base");
+    }
     const modeRoot = document.querySelector(`[data-mode-root="${page}"]`);
-    if (modeRoot) {
-      modeRoot.querySelectorAll(".mode-chip").forEach((chip) => {
+    document.querySelectorAll(`[data-mode-root="${page}"]`).forEach((root) => {
+      root.querySelectorAll(".mode-chip").forEach((chip) => {
         chip.classList.toggle("active", chip.dataset.compareMode === state.compare[page].mode);
       });
-    }
+    });
   });
 
   document.getElementById("page-title").textContent = pageMeta[state.page].title;
@@ -1151,9 +1380,13 @@ function renderPageScaffolding() {
 
 function render() {
   renderPageScaffolding();
+  ["eval", "analysis"].forEach((page) => renderStatePanels(page));
   renderModelControls();
   renderModelContent("eval");
   renderModelContent("analysis");
+  renderSingleUploadCards();
+  renderCompareUploadCards("eval");
+  renderCompareUploadCards("analysis");
   renderCompareBuilder("eval");
   renderCompareBuilder("analysis");
   renderCompareSection("eval");
@@ -1167,7 +1400,9 @@ function render() {
 
 function animateVisibleProgress() {
   document.querySelectorAll(".page.active .scenario.active .progress-fill").forEach((fill) => {
-    const label = fill.closest(".progress-panel").querySelector(".progress-label");
+    const panel = fill.closest(".progress-panel");
+    if (panel && panel.classList.contains("done")) return;
+    const label = panel?.querySelector(".progress-label");
     const styleWidth = fill.style.width || "0%";
     const target = Number.parseInt(styleWidth, 10) || 0;
     fill.style.width = "0%";
@@ -1189,17 +1424,10 @@ document.querySelectorAll(".nav-btn").forEach((el) => {
   el.addEventListener("click", () => setPage(el.dataset.page));
 });
 
-document.querySelectorAll('[data-upload-trigger="eval:single"]').forEach((button) => {
-  button.addEventListener("click", (event) => {
-    event.preventDefault();
-    openSingleUploadAction("eval");
-  });
-});
-
-document.querySelectorAll('[data-upload-trigger="analysis:single"]').forEach((button) => {
-  button.addEventListener("click", (event) => {
-    event.preventDefault();
-    openSingleUploadAction("analysis");
+document.querySelectorAll("[data-single-upload-card]").forEach((card) => {
+  card.addEventListener("click", () => {
+    const kind = card.dataset.singleUploadCard;
+    openSingleUploadAction(kind);
   });
 });
 
@@ -1304,14 +1532,89 @@ document.querySelectorAll("[data-model-scope]").forEach((button) => {
   });
 });
 
-document.querySelectorAll("[data-model-doc]").forEach((button) => {
+document.querySelectorAll("[data-scroll-model-note]").forEach((button) => {
   button.addEventListener("click", () => {
-    const scope = button.dataset.modelDoc;
-    const config = modelContent[scope][state.models[scope]];
-    const lines = config.lines.map(([label, text]) => `${label}: ${text}`).join("\n");
-    window.alert(`${config.title}\n\n${lines}`);
+    const targetId = button.dataset.scrollModelNote;
+    const note = document.querySelector(`[data-model-note="${targetId}"]`);
+    if (!note) return;
+    note.scrollIntoView({ behavior: "smooth", block: "center" });
+    note.classList.add("pulse-highlight");
+    setTimeout(() => note.classList.remove("pulse-highlight"), 2000);
   });
 });
+
+document.querySelectorAll("[data-compare-start]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const kind = button.dataset.compareStart;
+    const groupCount = Object.keys(runtimeState.compare.groups[kind]).length;
+    if (groupCount >= 2) {
+      startCompareAction(kind);
+    }
+  });
+});
+
+document.querySelectorAll("[data-compare-start-ready]").forEach((button) => {
+  button.addEventListener("click", () => {
+    startCompareAction(button.dataset.compareStartReady);
+  });
+});
+
+document.querySelectorAll("[data-retry-trigger]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const [page, scene] = button.dataset.retryTrigger.split(":");
+    if (scene === "single") {
+      fileInputs[page]?.click();
+    } else if (scene === "compare") {
+      startCompareAction(page);
+    }
+  });
+});
+
+document.querySelectorAll("[data-compare-upload-group]").forEach((card) => {
+  card.addEventListener("click", () => {
+    const key = card.dataset.compareUploadGroup;
+    const kind = key.startsWith("eval") ? "eval" : "analysis";
+    const groupKey = key.replace(kind + "-", "");
+    compareFileInputs[kind][groupKey] ||= createHiddenCompareInput(kind, groupKey);
+    compareFileInputs[kind][groupKey].click();
+  });
+});
+
+document.querySelectorAll("[data-compare-add-group]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const kind = button.dataset.compareAddGroup;
+    const defs = compareGroupDefs[kind];
+    const nextIndex = compareGroupState[kind];
+    if (nextIndex >= defs.length) return;
+    const groupKey = defs[nextIndex];
+    compareGroupState[kind] += 1;
+    const row = document.querySelector(`[data-compare-groups-row="${kind}"]`);
+    if (!row) return;
+    const card = document.createElement("div");
+    card.className = "group-card-upload";
+    card.dataset.compareUploadGroup = `${kind}-${groupKey}`;
+    card.innerHTML = `
+      <div class="group-key">${groupKey}组</div>
+      <div class="upload-hint">点击上传文件</div>
+      <div class="format-hint">音频 wav/flac/mp3/aac/m4a/ogg · 视频 mp4/mov/mkv/avi</div>
+      <div class="file-status" data-group-status="${kind}-${groupKey}">未上传</div>
+    `;
+    card.addEventListener("click", () => {
+      compareFileInputs[kind][groupKey] ||= createHiddenCompareInput(kind, groupKey);
+      compareFileInputs[kind][groupKey].click();
+    });
+    row.insertBefore(card, button);
+    if (compareGroupState[kind] >= defs.length) button.style.display = "none";
+  });
+});
+
+function startCompareAction(kind) {
+  const groupCount = Object.keys(runtimeState.compare.groups[kind]).length;
+  if (groupCount < 2) return;
+  runtimeState.compare.status[kind] = "running";
+  render();
+  evaluateCompareUpload(kind);
+}
 
 const compareGroupState = {
   eval: 0,
@@ -1352,7 +1655,6 @@ document.addEventListener("click", async (event) => {
   await showHistoryDetailAction(button.dataset.historyDetail);
 });
 
-rememberInitialMarkup();
 loadHistoryItems();
 loadSettings();
 render();

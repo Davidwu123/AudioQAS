@@ -26,6 +26,7 @@ function createFetch(fetchMap) {
       return value({ url: key, options, calls });
     }
     if (value && typeof value === "object" && typeof value.json === "function") {
+      if (!value.text) value.text = async () => JSON.stringify(await value.json());
       return value;
     }
     return {
@@ -33,6 +34,9 @@ function createFetch(fetchMap) {
       status: 200,
       async json() {
         return value;
+      },
+      async text() {
+        return JSON.stringify(value);
       },
     };
   };
@@ -75,6 +79,12 @@ async function bootPreview({ fetchMap }) {
   window.cancelAnimationFrame = () => {};
 
   vm.runInContext(fs.readFileSync(dataScriptPath, "utf8"), context, { filename: dataScriptPath });
+  vm.runInContext(`
+    Object.defineProperty(XMLHttpRequest.prototype, 'upload', {
+      get: function() { return undefined; },
+      configurable: true,
+    });
+  `, context, { filename: "xhr-mock" });
   vm.runInContext(fs.readFileSync(appScriptPath, "utf8"), context, { filename: appScriptPath });
 
   tagOwnedSingleInputs(window.document);
@@ -110,8 +120,9 @@ async function bootPreview({ fetchMap }) {
       if (typeof arguments[2] === "object" && arguments[2] !== null) {
         waitForCompletion = arguments[2].waitForCompletion !== false;
       }
-      const trigger = query(`[data-upload-trigger="${page}:single"]`);
-      trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      const card = query(`[data-single-upload-card="${page}"]`);
+      card.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      await flush(window);
       const input = query(`input[type="file"][data-test-owner="${page}:single"]`);
       const file = new window.File(["audio"], fileName, { type: fileName.endsWith(".mov") ? "video/quicktime" : "audio/wav" });
       setFiles(input, [file]);
@@ -123,9 +134,13 @@ async function bootPreview({ fetchMap }) {
       }, "single-file upload POST");
       if (!waitForCompletion) return;
       await waitFor(window, () => {
-        if (alerts.length > 0) return true;
-        return query(`[data-page="${page}"] .card-title`).textContent?.includes(fileName);
-      }, `rendered single-file title or error for ${page}`);
+        const resultArea = window.document.querySelector(`[data-page="${page}"] [data-result-area]`);
+        const titleEl = window.document.querySelector(`[data-page="${page}"] .card-title`);
+        if (resultArea && resultArea.style.display !== "none" && titleEl && titleEl.textContent?.includes(fileName)) return true;
+        const errorPanel = window.document.querySelector(`[data-page="${page}"] [data-state-panel]`);
+        if (errorPanel && errorPanel.style.display !== "none") return true;
+        return false;
+      }, `rendered single-file result for ${page}`);
     },
     async openCompare(kind) {
       await this.click(`[data-scene-trigger="${kind}:compare"]`);
@@ -138,17 +153,30 @@ async function bootPreview({ fetchMap }) {
       await waitFor(window, () => window.document.querySelectorAll(`[data-group-builder="${kind}"] .group-card`).length >= 3, `add compare group for ${kind}`);
     },
     async uploadCompare(kind, filesByGroup) {
+      const startBtn = window.document.querySelector(`[data-compare-start="${kind}"]`) || window.document.querySelector(`[data-compare-start-ready="${kind}"]`);
       for (const [groupKey, fileName] of Object.entries(filesByGroup)) {
-        const card = [...window.document.querySelectorAll(`[data-group-builder="${kind}"] .group-card`)]
-          .find((node) => node.querySelector("strong")?.textContent?.trim() === groupKey);
-        assert.ok(card, `Missing compare group card: ${kind} ${groupKey}`);
-        const input = resolveClickedInput(card, [...window.document.querySelectorAll('input[type="file"]')]);
-        assert.ok(input, `Missing compare input for ${kind} ${groupKey}`);
-        const file = new window.File(["audio"], fileName, { type: fileName.endsWith(".mov") ? "video/quicktime" : "audio/wav" });
-        setFiles(input, [file]);
-        input.dispatchEvent(new window.Event("change", { bubbles: true }));
+        const groupCard = window.document.querySelector(`[data-compare-upload-group="${kind}-${groupKey}"]`);
+        const input = resolveClickedInput(groupCard, [...window.document.querySelectorAll('input[type="file"]')]) || compareFileInputs[kind]?.[groupKey];
+        if (!groupCard) {
+          const card = [...window.document.querySelectorAll(`[data-group-builder="${kind}"] .group-card`)]
+            .find((node) => node.querySelector("strong")?.textContent?.trim() === groupKey);
+          assert.ok(card, `Missing compare group card: ${kind} ${groupKey}`);
+          const input2 = resolveClickedInput(card, [...window.document.querySelectorAll('input[type="file"]')]);
+          assert.ok(input2, `Missing compare input for ${kind} ${groupKey}`);
+          const file = new window.File(["audio"], fileName, { type: fileName.endsWith(".mov") ? "video/quicktime" : "audio/wav" });
+          setFiles(input2, [file]);
+          input2.dispatchEvent(new window.Event("change", { bubbles: true }));
+        } else {
+          groupCard.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+          await flush(window);
+          const lastInput = [...window.document.querySelectorAll('input[type="file"]')].filter(i => !i.dataset.testOwner || i.dataset.testOwner.startsWith(kind + ":compare")).at(-1);
+          const file = new window.File(["audio"], fileName, { type: fileName.endsWith(".mov") ? "video/quicktime" : "audio/wav" });
+          setFiles(lastInput, [file]);
+          lastInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+        }
         await flush(window);
       }
+      if (startBtn) startBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
       await waitFor(window, () => trackedFetch.calls.some((call) => call.url === "/api/evaluate/compare-upload"), `${kind} compare upload fetch`);
       await waitFor(window, () => {
         const method = trackedFetch.calls.filter((call) => call.url === "/api/evaluate/compare-upload").at(-1)?.options?.method;
@@ -230,15 +258,15 @@ async function waitFor(window, predicate, label, timeoutMs = 500) {
 }
 
 function tagOwnedSingleInputs(document) {
-  const evalTriggers = [...document.querySelectorAll('[data-upload-trigger="eval:single"]')];
-  const analysisTriggers = [...document.querySelectorAll('[data-upload-trigger="analysis:single"]')];
+  const evalCard = document.querySelector('[data-single-upload-card="eval"]');
+  const analysisCard = document.querySelector('[data-single-upload-card="analysis"]');
   const hiddenInputs = [...document.querySelectorAll('input[type="file"]')];
-  for (const trigger of evalTriggers) {
-    const input = resolveOwnedInput(trigger, hiddenInputs);
+  if (evalCard) {
+    const input = resolveOwnedInput(evalCard, hiddenInputs);
     if (input) input.dataset.testOwner = "eval:single";
   }
-  for (const trigger of analysisTriggers) {
-    const input = resolveOwnedInput(trigger, hiddenInputs);
+  if (analysisCard) {
+    const input = resolveOwnedInput(analysisCard, hiddenInputs);
     if (input) input.dataset.testOwner = "analysis:single";
   }
 }
@@ -599,16 +627,16 @@ function buildAudioboxComparePayload() {
   };
 }
 
-test("web preview boots in jsdom and defaults to eval single scene", async () => {
+test("web preview boots in jsdom and defaults to eval empty scene", async () => {
   const app = await bootPreview({
     fetchMap: {
       "/api/history": [],
     },
   });
   try {
-    assert.equal(app.text('[data-page="eval"] .card-title'), "meeting_room_take_07.wav");
     assert.equal(app.document.querySelector('[data-page="eval"]').classList.contains("active"), true);
-    assert.equal(app.document.querySelector('[data-scene-root="eval"] [data-scene="single"]').classList.contains("active"), true);
+    assert.equal(app.document.querySelector('[data-scene-root="eval"] [data-scene="empty"]').classList.contains("active"), true);
+    assert.equal(app.document.querySelector('[data-scene-root="eval"] [data-scene="single"]').classList.contains("active"), false);
   } finally {
     await app.close();
   }
@@ -767,7 +795,7 @@ test("speech compare base mode recomputes summary relative to selected base grou
     await app.click('[data-compare-table="eval"] [data-detail-view="full"]');
     assert.equal(app.text('[data-compare-table="eval"] thead tr').includes("相对基准差值"), true);
 
-    await app.click('[data-base-root="eval"] .base-pill:nth-child(2)');
+    await app.click('[data-base-root-done="eval"] .base-pill:nth-child(2)');
     await waitFor(app.window, () => app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("当前基准 B 仍然更好"), "eval base mode summary B");
     assert.equal(app.text('[data-mode-root="eval"] .mode-chip.active'), "基准对比");
     assert.equal(app.text('[data-compare-summary="eval"] .compare-summary-alt').includes("当前基准 B 仍然更好"), true);
@@ -1069,7 +1097,7 @@ test("settings compare default toggle changes newly opened compare scene mode", 
   }
 });
 
-test("failed single upload triggers alert copy containing 本机评测失败", async () => {
+test("failed single upload shows error state panel", async () => {
   const app = await bootPreview({
     fetchMap: {
       "/api/history": [],
@@ -1085,10 +1113,12 @@ test("failed single upload triggers alert copy containing 本机评测失败", a
   try {
     await app.uploadSingle("eval", "broken.wav");
 
-    assert.equal(app.alerts.length, 1);
-    assert.match(app.alerts[0], /本机评测失败/);
-    assert.match(app.alerts[0], /页面渲染失败：Upload evaluate failed: 500/);
-    assert.match(app.alerts[0], /请求 ID：req_eval_single_/);
+    const errorPanel = app.document.querySelector('[data-state-panel="eval-single-error"]');
+    assert.ok(errorPanel, "error state panel exists");
+    assert.equal(errorPanel.style.display !== "none", true, "error state panel visible");
+    const reasonEl = errorPanel.querySelector('[data-error-reason]');
+    assert.ok(reasonEl, "error reason element exists");
+    assert.match(reasonEl.textContent, /Upload evaluate failed: 500/);
   } finally {
     await app.close();
   }
@@ -1114,38 +1144,36 @@ test("single upload shows readable preprocess-disabled error when backend reject
   try {
     await app.uploadSingle("eval", "broken.wav");
 
-    assert.equal(app.alerts.length, 1);
-    assert.match(app.alerts[0], /自动转单声道已关闭/);
+    const errorPanel = app.document.querySelector('[data-state-panel="eval-single-error"]');
+    assert.ok(errorPanel, "error state panel exists for preprocess error");
+    assert.equal(errorPanel.style.display !== "none", true, "error state panel visible");
+    const reasonEl = errorPanel.querySelector('[data-error-reason]');
+    assert.match(reasonEl.textContent, /自动转单声道已关闭/);
   } finally {
     await app.close();
   }
 });
 
-test("single upload flow shows staged progress labels in order", async () => {
-  const uploadResponse = createDeferredJsonResponse(buildDnsmosSinglePayload());
+test("single upload flow reaches done state and shows progress stages", async () => {
   const app = await bootPreview({
     fetchMap: {
       "/api/history": [],
-      "/api/evaluate/upload": uploadResponse.response,
+      "/api/evaluate/upload": buildJsonResponse(buildDnsmosSinglePayload()),
     },
   });
   try {
     const progressLog = app.captureTextAssignments('[data-page="eval"] [data-scene="single"] .progress-label');
-    const uploadTask = app.uploadSingle("eval", "demo.wav", { waitForCompletion: false });
-
-    await waitFor(app.window, () => progressLog.values.some((value) => value.startsWith("模型评测中 60%")), "single upload progress reaches model stage");
-    uploadResponse.resolve();
-    await uploadTask;
-    await waitFor(app.window, () => progressLog.values.some((value) => value.startsWith("100%")), "single upload progress reaches 100%");
+    await app.uploadSingle("eval", "demo.wav");
     progressLog.disconnect();
 
     assertOrderedIncludes(progressLog.values, [
-      "上传中 10%",
-      "预处理中 25%",
-      "模型评测中 60%",
-      "信号分析中 85%",
-      "100%",
+      "上传中",
+      "评测完成",
     ]);
+
+    const progressPanel = app.document.querySelector('[data-page="eval"] [data-scene="single"] .progress-panel');
+    assert.ok(progressPanel, "progress panel exists");
+    assert.equal(progressPanel.classList.contains("done"), true, "progress panel has done class");
   } finally {
     await app.close();
   }
@@ -1183,8 +1211,10 @@ test("single export button downloads current result as json", async () => {
     assert.equal(downloadUrls.includes("revoked:blob:test-export"), true);
     assert.equal(clickedDownloads.length, 2);
     assert.equal(clickedDownloads[0].href, "blob:test-export");
-    assert.equal(clickedDownloads[0].download, "audioqas_eval_single.json");
-    assert.equal(clickedDownloads[1].download, "audioqas_eval_single.csv");
+    assert.equal(clickedDownloads[0].download.startsWith("audioqas_eval_single_"), true);
+    assert.equal(clickedDownloads[0].download.endsWith(".json"), true);
+    assert.equal(clickedDownloads[1].download.startsWith("audioqas_eval_single_"), true);
+    assert.equal(clickedDownloads[1].download.endsWith(".csv"), true);
 
     app.window.URL.createObjectURL = originalCreateObjectURL;
     app.window.URL.revokeObjectURL = originalRevokeObjectURL;
@@ -1194,7 +1224,7 @@ test("single export button downloads current result as json", async () => {
   }
 });
 
-test("reset button clears current page runtime result", async () => {
+test("reset button clears current page runtime result and returns to empty", async () => {
   const app = await bootPreview({
     fetchMap: {
       "/api/history": [],
@@ -1203,13 +1233,11 @@ test("reset button clears current page runtime result", async () => {
   });
   try {
     await app.uploadSingle("eval", "demo.wav");
-    assert.equal(app.text("[data-eval-file-summary]"), "12.3s · 16000Hz · Mono · 当前模型 DNSMOS");
 
     await app.click('[data-reset-trigger="eval"]');
 
-    assert.equal(app.text("[data-eval-file-summary]"), "45.3s · 48kHz · Stereo · 当前模型 DNSMOS");
-    assert.equal(app.text('[data-page="eval"] .card-title'), "meeting_room_take_07.wav");
-    assert.equal(app.text('[data-page="eval"] [data-scene="single"] .progress-label'), "0%");
+    assert.equal(app.document.querySelector('[data-scene-root="eval"] [data-scene="empty"]').classList.contains("active"), true);
+    assert.equal(app.document.querySelector('[data-scene-root="eval"] [data-scene="single"]').classList.contains("active"), false);
   } finally {
     await app.close();
   }

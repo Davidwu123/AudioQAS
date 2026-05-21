@@ -10,5 +10,7 @@ dist/
 .claude/
 .worktrees/
 node_modules/
+.superpowers
 .tmp
 log/*
+test-results/

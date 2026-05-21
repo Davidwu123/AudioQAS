@@ -1106,6 +1106,7 @@ body::before{
   display:grid;
   grid-template-columns:1.15fr .85fr;
   gap:18px;
+  margin-top:18px;
   margin-bottom:18px;
 }
 
@@ -1473,7 +1474,8 @@ tbody tr:hover td{
   margin-top:14px;
 }
 
-.model-note.active-model{
+.model-note.active-model,
+.model-note.active-signal{
   border-color:rgba(88,166,255,0.34);
   box-shadow:inset 0 0 0 1px rgba(88,166,255,0.16);
 }
@@ -1639,13 +1641,95 @@ tbody tr:hover td{
     grid-template-columns:1fr;
   }
 }
+
+.progress-panel.done .progress-track{opacity:.45}
+.progress-panel.done .progress-label{color:var(--text-2);font-weight:600}
+.progress-panel.done .progress-top strong{color:var(--text-2)}
+.progress-panel.done .progress-fill{background:var(--good)}
+
+.state-panel{
+  display:grid;
+  place-items:center;
+  min-height:180px;
+  padding:24px;
+  border-radius:24px;
+  background:rgba(13,17,23,0.34);
+  border:1px solid rgba(48,54,61,0.5);
+}
+.state-panel h3{font-size:22px;margin:0 0 8px;color:var(--text)}
+.state-panel p{color:var(--text-2);font-size:14px;line-height:1.7;margin:0 0 4px}
+.state-panel .action-row{display:flex;gap:10px;margin-top:20px}
+.state-panel .state-weak{color:var(--text-3);font-size:11px;margin-top:12px}
+.state-panel.error{border-color:rgba(248,81,73,0.36);background:rgba(248,81,73,0.06)}
+.state-panel.error h3{color:var(--bad)}
+.state-panel.error .error-reason{color:var(--text-2);font-size:13px;margin-top:8px}
+.state-panel.error .retry-row{display:flex;gap:10px;margin-top:16px}
+.error-banner{background:rgba(248,81,73,0.12);color:#f85149;font-size:13px;padding:8px 12px;border-radius:6px;margin-bottom:12px;border:1px solid rgba(248,81,73,0.2)}
+
+.pulse-highlight{animation:model-pulse 1.5s ease-in-out 1}
+@keyframes model-pulse{
+  0%{box-shadow:0 0 0 0 rgba(88,166,255,0.4)}
+  50%{box-shadow:0 0 0 8px rgba(88,166,255,0.2)}
+  100%{box-shadow:0 0 0 0 rgba(88,166,255,0)}
+}
+
+.compare-start-btn{
+  padding:12px 28px;
+  border-radius:14px;
+  background:rgba(88,166,255,0.12);
+  color:var(--accent);
+  font-weight:700;
+  font-size:15px;
+  cursor:pointer;
+  border:1px solid rgba(88,166,255,0.34);
+}
+.compare-start-btn.disabled{
+  opacity:.5;
+  cursor:not-allowed;
+  background:rgba(88,166,255,0.06);
+  color:var(--text-3);
+  border-color:rgba(48,54,61,0.5);
+}
+.compare-start-btn .hint{display:block;font-size:12px;color:var(--text-2);margin-top:4px}
+.compare-start-btn.disabled .hint{color:var(--text-3)}
+
+.group-card-upload{
+  min-width:180px;
+  padding:18px 18px 14px;
+  border-radius:16px;
+  background:rgba(22,27,34,0.8);
+  border:2px dashed rgba(88,166,255,0.24);
+  cursor:pointer;
+  text-align:center;
+  transition:border-color .2s;
+}
+.group-card-upload:hover{border-color:rgba(88,166,255,0.48)}
+.group-card-upload.uploaded{
+  border-style:solid;
+  border-color:rgba(63,185,80,0.36);
+  cursor:pointer;
+}
+.group-card-upload .group-key{font-size:15px;font-weight:700;color:var(--text)}
+.group-card-upload .upload-hint{font-size:13px;color:var(--text-2);margin-top:8px}
+.group-card-upload .format-hint{font-size:11px;color:var(--text-3);margin-top:6px}
+.group-card-upload .file-summary{font-size:12px;color:var(--text);margin-top:10px}
+.group-card-upload .file-type-tag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:6px;background:var(--accent-soft);color:var(--accent);margin-left:4px}
+.group-card-upload .file-size{font-size:11px;color:var(--text-2);margin-left:4px}
+.group-card-upload .file-status{font-size:11px;color:var(--good);margin-top:4px}
+.group-add-btn{
+  width:80px;height:auto;min-height:160px;border:2px dashed var(--glass-border);
+  border-radius:var(--radius-md);background:transparent;color:var(--text-2);
+  font-size:14px;font-weight:600;cursor:pointer;transition:border-color .2s,color .2s;
+  display:flex;align-items:center;justify-content:center;
+}
+.group-add-btn:hover{border-color:var(--accent);color:var(--accent)}
 </style>
 <script>
 (function() {
   const base = location.protocol === "file:" ? "." : "/design";
   const assetVersion = location.protocol === "file:"
     ? String(Date.now())
-    : "2026-05-20-architecture-cleanup-1";
+    : "2026-05-21-compare-upload-cards";
   function load(src) {
     return new Promise((resolve, reject) => {
       const script = document.createElement("script");
@@ -1732,7 +1816,7 @@ tbody tr:hover td{
     <section class="page" data-page="eval">
       <div class="shell">
         <div class="shell-toolbar">
-          <button class="ghost-btn" data-upload-trigger="eval:single">单文件测评</button>
+          <button class="ghost-btn" data-scene-trigger="eval:single" data-single-btn="eval">单文件测评</button>
           <button class="ghost-btn" data-scene-trigger="eval:compare" data-compare-btn="eval">对比评测</button>
           <button class="ghost-btn" data-export-trigger="eval">导出结果</button>
           <button class="ghost-btn" data-reset-trigger="eval">重置</button>
@@ -1741,58 +1825,27 @@ tbody tr:hover td{
         </div>
 
         <div class="shell-body" data-scene-root="eval">
-          <div class="scenario" data-scene="empty">
-            <div class="dropzone">
-              <div class="dropzone-card">
-                <span class="dropzone-kicker">Speech Quality</span>
-                <h3>拖拽纯人声音频到此处</h3>
-                <p>适用于通话、口播、会议和纯人声录音。</p>
-                <div class="action-row">
-                  <button class="ghost-btn" data-upload-trigger="eval:single">选择文件</button>
-                  <button class="ghost-btn" data-scene-trigger="eval:compare">进入多组对比</button>
-                  <button class="ghost-btn" data-model-doc="eval">模型说明</button>
-                </div>
-                <div class="format-row">
-                  <span class="tag">WAV</span>
-                  <span class="tag">FLAC</span>
-                  <span class="tag">MP3</span>
-                  <span class="tag">AAC</span>
-                  <span class="tag">OGG</span>
-                  <span class="tag">M4A</span>
-                  <span class="tag accent">MP4</span>
-                  <span class="tag accent">MKV</span>
-                  <span class="tag accent">AVI</span>
-                </div>
-              </div>
-            </div>
-
+          <div class="two-col notes-row" data-notes-row="eval" style="margin-bottom:18px">
+            <div class="model-note active-model" data-model-note="eval-single"></div>
+            <div class="model-note" data-signal-note="eval-single"></div>
           </div>
 
-          <div class="scenario active" data-scene="single">
-            <div class="two-col" style="margin-bottom:18px">
-              <div class="model-note active-model" data-model-note="eval-single">
-                <h4>DNSMOS</h4>
-                <div class="fact-list">
-                  <div class="fact-row"><strong>适用</strong><span>纯人声、通话、会议、口播</span></div>
-                  <div class="fact-row"><strong>优点</strong><span>结果直观，适合快速筛查人声问题</span></div>
-                  <div class="fact-row"><strong>局限</strong><span>不适合强配乐或节目成品</span></div>
-                  <div class="fact-row"><strong>原理</strong><span>无参考语音质量预测</span></div>
-                  <div class="fact-row"><strong>指标</strong><span>OVRL=整体听感，SIG=语音清晰度，BAK=背景干净度</span></div>
-                </div>
-              </div>
-              <div class="model-note" data-signal-note="eval-single">
-                <h4>信号分析模块</h4>
-                <div class="fact-list">
-                  <div class="fact-row"><strong>作用</strong><span>补充工程判断，发现响度、峰值、削波和失真问题</span></div>
-                  <div class="fact-row"><strong>优点</strong><span>可解释，便于技术复核</span></div>
-                  <div class="fact-row"><strong>局限</strong><span>不能替代人声感知质量判断</span></div>
-                  <div class="fact-row"><strong>原理</strong><span>基于响度、峰值和频域指标检测</span></div>
-                  <div class="fact-row"><strong>指标</strong><span>LUFS=综合响度，LRA=响度范围，True Peak=真实峰值，Clipping=削波次数，THD=谐波失真</span></div>
+          <div class="scenario active" data-scene="empty">
+            <div class="state-panel">
+                            <div style="display:flex;justify-content:center">
+                <div class="group-card-upload" data-single-upload-card="eval" style="max-width:260px">
+                  <div class="group-key">添加文件开始评测</div>
+                  <div class="upload-hint">点击上传文件</div>
+                  <div class="format-hint">音频 wav/flac/mp3/aac/m4a/ogg · 视频 mp4/mov/mkv/avi</div>
+                  <div class="file-status" data-single-upload-status="eval">未上传</div>
                 </div>
               </div>
             </div>
+          </div>
 
-            <div class="progress-panel">
+          <div class="scenario" data-scene="single">
+
+            <div class="progress-panel" style="display:none">
               <div class="progress-top">
                 <strong>任务进度</strong>
                 <span class="progress-label" data-target="100">0%</span>
@@ -1807,21 +1860,21 @@ tbody tr:hover td{
               </div>
             </div>
 
-            <div class="glass-card overview-card">
+            <div class="glass-card overview-card" data-result-area="eval-single">
               <div class="overview-grid">
                 <div class="overview-main">
                   <p class="card-kicker">结果概览</p>
-                  <h3 class="card-title">meeting_room_take_07.wav</h3>
+                  <h3 class="card-title"></h3>
                   <div class="score-hero">
-                    <div class="value status-fair">3.82</div>
-                    <div class="pill-grade status-fair" style="background:rgba(227,179,65,0.12)">还行 · 需继续优化</div>
+                    <div class="value"></div>
+                    <div class="pill-grade"></div>
                   </div>
                   <div class="overview-summary">
                     <strong>首屏结论</strong>
-                    <p>整体可用，但背景底噪仍然可感知，建议继续降噪和电平整理后再复评。</p>
+                    <p></p>
                     <div class="overview-advice" data-eval-advice-block>
                       <strong>处理建议</strong>
-                      <span data-eval-advice>建议先做降噪和电平整理，再进行复评。</span>
+                      <span data-eval-advice></span>
                     </div>
                   </div>
                 </div>
@@ -1829,11 +1882,11 @@ tbody tr:hover td{
                   <div class="overview-list">
                     <div class="overview-item">
                       <strong>文件摘要</strong>
-                      <span data-eval-file-summary>45.3s · 48kHz · Stereo · 当前模型 DNSMOS</span>
+                      <span data-eval-file-summary></span>
                     </div>
                     <div class="overview-item" data-trace-block>
                       <strong>预处理追溯</strong>
-                      <span data-eval-trace>原始文件 → 转单声道 → 重采样到 16kHz → 送入 DNSMOS</span>
+                      <span data-eval-trace></span>
                     </div>
                   </div>
                 </div>
@@ -1841,70 +1894,10 @@ tbody tr:hover td{
             </div>
 
             <div class="section-title">模型结果</div>
-            <div class="four-col" data-eval-model-grid>
-              <div class="score-card">
-                <div class="label">整体听感 · OVRL</div>
-                <div class="number status-fair">3.82</div>
-                <div class="bar"><span style="width:76.4%;background:var(--fair)"></span></div>
-                <div class="grade status-fair">还行</div>
-                <div class="desc">整体听感可接受，但离“可直接交付”还有距离。</div>
-              </div>
-              <div class="score-card">
-                <div class="label">语音清晰度 · SIG</div>
-                <div class="number status-good">4.15</div>
-                <div class="bar"><span style="width:83%;background:var(--good)"></span></div>
-                <div class="grade status-good">良好</div>
-                <div class="desc">主体人声清晰，字头和尾音都较完整。</div>
-              </div>
-              <div class="score-card">
-                <div class="label">背景干净度 · BAK</div>
-                <div class="number status-fair">3.56</div>
-                <div class="bar"><span style="width:71.2%;background:var(--fair)"></span></div>
-                <div class="grade status-fair">还行</div>
-                <div class="desc">空调底噪和房间环境声仍然可感知。</div>
-              </div>
-              <div class="score-card">
-                <div class="label">处理建议</div>
-                <div class="number status-accent">A-</div>
-                <div class="bar"><span style="width:78%;background:var(--accent)"></span></div>
-                <div class="grade status-accent">需继续优化</div>
-                <div class="desc">建议先做降噪和电平整理，再进行复评。</div>
-              </div>
-            </div>
+            <div class="four-col" data-eval-model-grid></div>
 
             <div class="section-title">信号分析</div>
-            <div class="five-col">
-              <div class="metric">
-                <div class="label">综合响度 · LUFS</div>
-                <div class="value status-warn">-14.8</div>
-                <div class="state status-warn">需关注</div>
-                <div class="desc">响度略高，长时间听会偏顶。</div>
-              </div>
-              <div class="metric">
-                <div class="label">响度范围 · LRA</div>
-                <div class="value status-good">8.9</div>
-                <div class="state status-good">稳定</div>
-                <div class="desc">动态范围比较稳定，适合口播内容。</div>
-              </div>
-              <div class="metric">
-                <div class="label">真实峰值 · True Peak</div>
-                <div class="value status-warn">-0.4</div>
-                <div class="state status-warn">需关注</div>
-                <div class="desc">峰值接近上限，建议保留更多余量。</div>
-              </div>
-              <div class="metric">
-                <div class="label">削波次数 · Clipping</div>
-                <div class="value status-good">0</div>
-                <div class="state status-good">稳定</div>
-                <div class="desc">没有发现明显削波事件。</div>
-              </div>
-              <div class="metric">
-                <div class="label">谐波失真 · THD</div>
-                <div class="value status-good">0.5%</div>
-                <div class="state status-good">稳定</div>
-                <div class="desc">谐波失真较低，没有明显破音风险。</div>
-              </div>
-            </div>
+            <div class="five-col" data-eval-signal-grid></div>
 
             <div class="compare-table single-detail" data-single-detail-table="eval">
               <div class="detail-toolbar">
@@ -1917,7 +1910,7 @@ tbody tr:hover td{
               </div>
               <div class="table-head">
                 <div class="intro-tags">
-                  <span class="tag" data-single-model-tag="eval">模型: DNSMOS</span>
+                  <span class="tag" data-single-model-tag="eval"></span>
                   <span class="tag">单文件结果</span>
                 </div>
               </div>
@@ -1930,33 +1923,70 @@ tbody tr:hover td{
                 <tbody></tbody>
               </table>
             </div>
+
+            <div class="state-panel error" data-state-panel="eval-single-error" style="display:none">
+              <h3>评测失败</h3>
+              <div class="error-reason" data-error-reason="eval-single"></div>
+              <div class="retry-row">
+                <button class="ghost-btn accent" data-retry-trigger="eval:single">重新开始评测</button>
+              </div>
+            </div>
           </div>
 
           <div class="scenario" data-scene="compare">
             <div class="two-col" style="margin-bottom:18px">
-              <div class="model-note active-model" data-model-note="eval-compare">
-                <h4>DNSMOS</h4>
-                <div class="fact-list">
-                  <div class="fact-row"><strong>适用</strong><span>多组纯人声素材对比</span></div>
-                  <div class="fact-row"><strong>优点</strong><span>适合快速比较整体听感、清晰度和背景干净度</span></div>
-                  <div class="fact-row"><strong>局限</strong><span>不适合强配乐或节目成品</span></div>
-                  <div class="fact-row"><strong>原理</strong><span>无参考语音质量预测</span></div>
-                  <div class="fact-row"><strong>指标</strong><span>OVRL=整体听感，SIG=语音清晰度，BAK=背景干净度</span></div>
+              <div class="model-note active-model" data-model-note="eval-compare"></div>
+              <div class="model-note" data-signal-note="eval-compare"></div>
+            </div>
+
+            <div data-compare-state="eval-empty">
+              <div class="compare-groups-row" data-compare-groups-row="eval" style="display:flex;gap:16px;margin-bottom:18px;justify-content:center">
+                <div class="group-card-upload" data-compare-upload-group="eval-A">
+                  <div class="group-key">A组</div>
+                  <div class="upload-hint">点击上传文件</div>
+                  <div class="format-hint">音频 wav/flac/mp3/aac/m4a/ogg · 视频 mp4/mov/mkv/avi</div>
+                  <div class="file-status" data-group-status="eval-A">未上传</div>
                 </div>
+                <div class="group-card-upload" data-compare-upload-group="eval-B">
+                  <div class="group-key">B组</div>
+                  <div class="upload-hint">点击上传文件</div>
+                  <div class="format-hint">音频 wav/flac/mp3/aac/m4a/ogg · 视频 mp4/mov/mkv/avi</div>
+                  <div class="file-status" data-group-status="eval-B">未上传</div>
+                </div>
+                <button class="group-add-btn" data-compare-add-group="eval" type="button">+ 新增组</button>
               </div>
-              <div class="model-note" data-signal-note="eval-compare">
-                <h4>信号分析模块</h4>
-                <div class="fact-list">
-                  <div class="fact-row"><strong>作用</strong><span>对比流程同样走完整信号分析链路</span></div>
-                  <div class="fact-row"><strong>优点</strong><span>便于区分感知改善和技术修复</span></div>
-                  <div class="fact-row"><strong>局限</strong><span>不能替代人声感知质量判断</span></div>
-                  <div class="fact-row"><strong>原理</strong><span>基于响度、峰值和频域指标检测</span></div>
-                  <div class="fact-row"><strong>指标</strong><span>LUFS=综合响度，LRA=响度范围，True Peak=真实峰值，Clipping=削波次数，THD=谐波失真</span></div>
-                </div>
+              <div style="display:flex;justify-content:center;margin-bottom:18px">
+                <button class="compare-start-btn disabled" data-compare-start="eval" type="button">
+                  开始对比评测<span class="hint">至少添加 2 组文件后开始对比评测</span>
+                </button>
               </div>
             </div>
 
-            <div class="progress-panel">
+            <div data-compare-state="eval-ready" style="display:none">
+              <div class="compare-input">
+                <h3>对比输入</h3>
+                <p>支持最多 6 组对比，可选择自由对比或基准对比。</p>
+                <div class="group-builder" data-group-builder="eval"></div>
+                <div class="base-select">
+                  <div class="compare-mode">
+                    <span class="compare-mode-label">对比模式：</span>
+                    <div class="mode-row" data-mode-root="eval">
+                      <button class="mode-chip active" data-compare-kind="eval" data-compare-mode="free" type="button">自由对比</button>
+                      <button class="mode-chip" data-compare-kind="eval" data-compare-mode="base" type="button">基准对比</button>
+                    </div>
+                  </div>
+                  <div class="base-picker" data-base-picker="eval">
+                    <span class="base-label">基准组：</span>
+                    <div class="base-row" data-base-root="eval"></div>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:center;margin:18px 0">
+                <button class="compare-start-btn" data-compare-start-ready="eval" type="button">开始对比评测</button>
+              </div>
+            </div>
+
+            <div class="progress-panel" style="display:none">
               <div class="progress-top">
                 <strong>对比任务进度</strong>
                 <span class="progress-label" data-target="100">0%</span>
@@ -1971,14 +2001,8 @@ tbody tr:hover td{
               </div>
             </div>
 
-            <div class="compare-input">
-              <h3>对比输入</h3>
-              <p>支持最多 6 组对比，可选择自由对比或基准对比。</p>
-              <div class="group-builder" data-group-builder="eval">
-                <div class="group-card"><strong>A</strong><span>call_raw.wav<br>原始人声样本</span></div>
-                <div class="group-card"><strong>B</strong><span>denoise_v1.wav<br>一轮降噪</span></div>
-                <button class="group-add" data-add-group="eval" type="button">+</button>
-              </div>
+            <div data-compare-state="eval-done" style="display:none">
+              <div class="error-banner" data-error-banner="eval-compare" style="display:none"></div>
               <div class="base-select">
                 <div class="compare-mode">
                   <span class="compare-mode-label">对比模式：</span>
@@ -1987,98 +2011,78 @@ tbody tr:hover td{
                     <button class="mode-chip" data-compare-kind="eval" data-compare-mode="base" type="button">基准对比</button>
                   </div>
                 </div>
-                <div class="base-picker" data-base-picker="eval">
+                <div class="base-picker" data-base-picker-done="eval">
                   <span class="base-label">基准组：</span>
-                  <div class="base-row" data-base-root="eval">
-                    <button class="base-pill active" type="button">A</button>
-                    <button class="base-pill" type="button">B</button>
+                  <div class="base-row" data-base-root-done="eval"></div>
+                </div>
+              </div>
+              <div class="compare-hero">
+                <div class="compare-summary" data-compare-summary="eval">
+                  <h3>对比结论</h3>
+                  <div class="compare-summary-default">
+                    <div class="compare-winner">
+                      <div class="winner-mark">-</div>
+                      <div class="winner-copy"><strong>推荐版本</strong><span></span></div>
+                    </div>
+                    <div class="compare-reason"></div>
+                    <div class="compare-kpis">
+                      <div class="compare-kpi"><strong>总分</strong><span class="muted">-</span></div>
+                      <div class="compare-kpi"><strong>峰值</strong><span class="muted">-</span></div>
+                      <div class="compare-kpi"><strong>削波</strong><span class="muted">-</span></div>
+                    </div>
+                  </div>
+                  <div class="compare-summary-alt">
+                    <div class="compare-winner">
+                      <div class="winner-mark">-</div>
+                      <div class="winner-copy"><strong>推荐版本</strong><span></span></div>
+                    </div>
+                    <div class="compare-reason"></div>
+                    <div class="compare-kpis">
+                      <div class="compare-kpi"><strong>相对提升</strong><span class="muted">-</span></div>
+                      <div class="compare-kpi"><strong>当前基准</strong><span class="muted">-</span></div>
+                      <div class="compare-kpi"><strong>总分</strong><span class="muted">-</span></div>
+                    </div>
                   </div>
                 </div>
+                <div class="compare-ranking" data-compare-ranking="eval">
+                  <h3>推荐排序</h3>
+                  <div class="ranking-list"></div>
+                </div>
+              </div>
+
+              <div class="compare-table compare-detail" data-compare-table="eval">
+                <div class="detail-toolbar">
+                  <h3>详细数据</h3>
+                  <div class="detail-switch">
+                    <button class="small-btn active" data-detail-view="metrics">模型维度</button>
+                    <button class="small-btn" data-detail-view="signal">信号分析</button>
+                    <button class="small-btn" data-detail-view="full">完整表格</button>
+                  </div>
+                </div>
+                <div class="table-head">
+                  <div class="intro-tags">
+                    <span class="tag" data-base-tag="eval">自由对比</span>
+                    <span class="tag" data-compare-model-tag="eval"></span>
+                    <span class="tag">含信号分析</span>
+                  </div>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th><span class="th-label">载入中</span><span class="th-sub">Loading</span></th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
               </div>
             </div>
 
-            <div class="compare-hero">
-              <div class="compare-summary" data-compare-summary="eval">
-                <h3>对比结论</h3>
-                <div class="compare-summary-default">
-                  <div class="compare-winner">
-                    <div class="winner-mark">-</div>
-                    <div class="winner-copy">
-                      <strong>推荐版本</strong>
-                      <span>等待脚本填充当前最佳结果。</span>
-                    </div>
-                  </div>
-                  <div class="compare-reason">等待脚本填充结论。</div>
-                  <div class="compare-kpis">
-                    <div class="compare-kpi">
-                      <strong>总分</strong>
-                      <span class="muted">-</span>
-                    </div>
-                    <div class="compare-kpi">
-                      <strong>峰值</strong>
-                      <span class="muted">-</span>
-                    </div>
-                    <div class="compare-kpi">
-                      <strong>削波</strong>
-                      <span class="muted">-</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="compare-summary-alt">
-                  <div class="compare-winner">
-                    <div class="winner-mark">-</div>
-                    <div class="winner-copy">
-                      <strong>推荐版本</strong>
-                      <span>等待脚本填充基准对比结果。</span>
-                    </div>
-                  </div>
-                  <div class="compare-reason">等待脚本填充结论。</div>
-                  <div class="compare-kpis">
-                    <div class="compare-kpi">
-                      <strong>相对提升</strong>
-                      <span class="muted">-</span>
-                    </div>
-                    <div class="compare-kpi">
-                      <strong>当前基准</strong>
-                      <span class="muted">-</span>
-                    </div>
-                    <div class="compare-kpi">
-                      <strong>总分</strong>
-                      <span class="muted">-</span>
-                    </div>
-                  </div>
-                </div>
+            <div class="state-panel error" data-compare-state="eval-error" style="display:none">
+              <h3>对比评测失败</h3>
+              <div class="error-reason" data-error-reason="eval-compare"></div>
+              <div class="retry-row">
+                <button class="ghost-btn accent" data-retry-trigger="eval:compare">重新开始对比评测</button>
               </div>
-              <div class="compare-ranking" data-compare-ranking="eval">
-                <h3>推荐排序</h3>
-                <div class="ranking-list"></div>
-              </div>
-            </div>
-
-            <div class="compare-table compare-detail" data-compare-table="eval">
-              <div class="detail-toolbar">
-                <h3>详细数据</h3>
-                <div class="detail-switch">
-                  <button class="small-btn active" data-detail-view="metrics">模型维度</button>
-                  <button class="small-btn" data-detail-view="signal">信号分析</button>
-                  <button class="small-btn" data-detail-view="full">完整表格</button>
-                </div>
-              </div>
-              <div class="table-head">
-                <div class="intro-tags">
-                  <span class="tag" data-base-tag="eval">自由对比</span>
-                  <span class="tag" data-compare-model-tag="eval">模型: DNSMOS</span>
-                  <span class="tag">含信号分析</span>
-                </div>
-              </div>
-              <table>
-                <thead>
-                  <tr>
-                    <th><span class="th-label">载入中</span><span class="th-sub">Loading</span></th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
             </div>
           </div>
         </div>
@@ -2088,7 +2092,7 @@ tbody tr:hover td{
     <section class="page" data-page="analysis">
       <div class="shell">
         <div class="shell-toolbar">
-          <button class="ghost-btn" data-upload-trigger="analysis:single">单文件分析</button>
+          <button class="ghost-btn" data-scene-trigger="analysis:single" data-single-btn="analysis">单文件分析</button>
           <button class="ghost-btn" data-scene-trigger="analysis:compare" data-compare-btn="analysis">对比分析</button>
           <button class="ghost-btn" data-export-trigger="analysis">导出结果</button>
           <button class="ghost-btn" data-reset-trigger="analysis">重置</button>
@@ -2097,57 +2101,27 @@ tbody tr:hover td{
         </div>
 
         <div class="shell-body" data-scene-root="analysis">
-          <div class="scenario" data-scene="empty">
-            <div class="dropzone">
-              <div class="dropzone-card">
-                <span class="dropzone-kicker">Mixed Content</span>
-                <h3>拖拽综合音频或视频文件到此处</h3>
-                <p>适用于人声、音乐、节目成品和视频音轨的综合分析。</p>
-                <div class="action-row">
-                  <button class="ghost-btn" data-upload-trigger="analysis:single">选择文件</button>
-                  <button class="ghost-btn" data-scene-trigger="analysis:compare">进入多组对比</button>
-                  <button class="ghost-btn" data-model-doc="analysis">模型说明</button>
-                </div>
-                <div class="format-row">
-                  <span class="tag">WAV</span>
-                  <span class="tag">FLAC</span>
-                  <span class="tag">MP3</span>
-                  <span class="tag">AAC</span>
-                  <span class="tag">OGG</span>
-                  <span class="tag">M4A</span>
-                  <span class="tag accent">MP4</span>
-                  <span class="tag accent">MKV</span>
-                  <span class="tag accent">MOV</span>
+          <div class="two-col notes-row" data-notes-row="analysis" style="margin-bottom:18px">
+            <div class="model-note active-model" data-model-note="analysis-single"></div>
+            <div class="model-note" data-signal-note="analysis-single"></div>
+          </div>
+
+          <div class="scenario active" data-scene="empty">
+            <div class="state-panel">
+                            <div style="display:flex;justify-content:center">
+                <div class="group-card-upload" data-single-upload-card="analysis" style="max-width:260px">
+                  <div class="group-key">添加文件开始分析</div>
+                  <div class="upload-hint">点击上传文件</div>
+                  <div class="format-hint">音频 wav/flac/mp3/aac/m4a/ogg · 视频 mp4/mov/mkv/avi</div>
+                  <div class="file-status" data-single-upload-status="analysis">未上传</div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="scenario active" data-scene="single">
-            <div class="two-col" style="margin-bottom:18px">
-              <div class="model-note active-model" data-model-note="analysis-single">
-                <h4>AudioBox Aesthetics</h4>
-                <div class="fact-list">
-                  <div class="fact-row"><strong>适用</strong><span>人声+音乐、节目成品、混合内容</span></div>
-                  <div class="fact-row"><strong>优点</strong><span>更接近内容级判断，适合成品审视</span></div>
-                  <div class="fact-row"><strong>局限</strong><span>不能与语音 MOS 数值直接横向等价比较</span></div>
-                  <div class="fact-row"><strong>原理</strong><span>内容美学 / 内容感知评分</span></div>
-                  <div class="fact-row"><strong>指标</strong><span>PQ=制作质量，CE=内容享受，CU=内容有用，PC=制作复杂度</span></div>
-                </div>
-              </div>
-              <div class="model-note" data-signal-note="analysis-single">
-                <h4>信号分析模块</h4>
-                <div class="fact-list">
-                  <div class="fact-row"><strong>作用</strong><span>补充工程判断，发现响度、峰值、削波和失真问题</span></div>
-                  <div class="fact-row"><strong>优点</strong><span>可解释，便于复核和交付前检查</span></div>
-                  <div class="fact-row"><strong>局限</strong><span>不能单独替代内容完成度判断</span></div>
-                  <div class="fact-row"><strong>原理</strong><span>基于响度、峰值和频域指标检测</span></div>
-                  <div class="fact-row"><strong>指标</strong><span>LUFS=综合响度，LRA=响度范围，True Peak=真实峰值，Clipping=削波次数，THD=谐波失真</span></div>
-                </div>
-              </div>
-            </div>
+          <div class="scenario" data-scene="single">
 
-            <div class="progress-panel">
+            <div class="progress-panel" style="display:none">
               <div class="progress-top">
                 <strong>任务进度</strong>
                 <span class="progress-label" data-target="100">0%</span>
@@ -2162,21 +2136,21 @@ tbody tr:hover td{
               </div>
             </div>
 
-            <div class="glass-card overview-card">
+            <div class="glass-card overview-card" data-result-area="analysis-single">
               <div class="overview-grid">
                 <div class="overview-main">
                   <p class="card-kicker">结果概览</p>
-                  <h3 class="card-title">主播测试_慢歌_take03.mov</h3>
+                  <h3 class="card-title"></h3>
                   <div class="score-hero">
-                    <div class="value status-good">7.8</div>
-                    <div class="pill-grade status-good" style="background:rgba(63,185,80,0.12)">良好 · 可优化后交付</div>
+                    <div class="value"></div>
+                    <div class="pill-grade"></div>
                   </div>
                   <div class="overview-summary">
                     <strong>首屏结论</strong>
-                    <p>内容层评价较高，但响度和峰值仍需继续调整后再交付。</p>
+                    <p></p>
                     <div class="overview-advice" data-analysis-advice-block>
                       <strong>处理建议</strong>
-                      <span data-analysis-advice>适合发布前微调，需继续整理峰值和响度。</span>
+                      <span data-analysis-advice></span>
                     </div>
                   </div>
                 </div>
@@ -2184,11 +2158,11 @@ tbody tr:hover td{
                   <div class="overview-list">
                     <div class="overview-item">
                       <strong>文件摘要</strong>
-                      <span data-analysis-file-summary>31.2s · MOV 抽取音轨 · 48kHz · Mono</span>
+                      <span data-analysis-file-summary></span>
                     </div>
                     <div class="overview-item" data-trace-block>
                       <strong>预处理追溯</strong>
-                      <span data-analysis-trace>原始视频 → 抽取音轨 → 转单声道 → 保持 48kHz → 送入 AudioBox</span>
+                      <span data-analysis-trace></span>
                     </div>
                   </div>
                 </div>
@@ -2196,70 +2170,10 @@ tbody tr:hover td{
             </div>
 
             <div class="section-title">模型结果</div>
-            <div class="four-col">
-              <div class="score-card">
-                <div class="label">制作质量 · PQ</div>
-                <div class="number status-good">7.8</div>
-                <div class="bar"><span style="width:78%;background:var(--good)"></span></div>
-                <div class="grade status-good">良好</div>
-                <div class="desc">制作完成度高，听感组织和细节控制都较稳定。</div>
-              </div>
-              <div class="score-card">
-                <div class="label">内容享受 · CE</div>
-                <div class="number status-good">7.1</div>
-                <div class="bar"><span style="width:71%;background:var(--good)"></span></div>
-                <div class="grade status-good">良好</div>
-                <div class="desc">内容节奏和情绪传递较完整，整体感受积极。</div>
-              </div>
-              <div class="score-card">
-                <div class="label">内容有用 · CU</div>
-                <div class="number status-excellent">8.5</div>
-                <div class="bar"><span style="width:85%;background:var(--excellent)"></span></div>
-                <div class="grade status-excellent">优秀</div>
-                <div class="desc">信息有效，适合审核和对外分发使用。</div>
-              </div>
-              <div class="score-card">
-                <div class="label">制作复杂度 · PC</div>
-                <div class="number status-fair">5.9</div>
-                <div class="bar"><span style="width:59%;background:var(--fair)"></span></div>
-                <div class="grade status-fair">还行</div>
-                <div class="desc">处理链不算复杂，仍有继续精修空间。</div>
-              </div>
-            </div>
+            <div class="four-col" data-analysis-model-grid></div>
 
             <div class="section-title">信号分析</div>
-            <div class="five-col">
-              <div class="metric">
-                <div class="label">综合响度 · LUFS</div>
-                <div class="value status-warn">-14.2</div>
-                <div class="state status-warn">需关注</div>
-                <div class="desc">响度略高，平台归一化后可能被压回去。</div>
-              </div>
-              <div class="metric">
-                <div class="label">响度范围 · LRA</div>
-                <div class="value status-good">9.4</div>
-                <div class="state status-good">稳定</div>
-                <div class="desc">动态范围比较稳定，适合节目成品。</div>
-              </div>
-              <div class="metric">
-                <div class="label">真实峰值 · True Peak</div>
-                <div class="value status-warn">-0.3</div>
-                <div class="state status-warn">需关注</div>
-                <div class="desc">峰值接近上限，建议再留 0.7 dBTP 余量。</div>
-              </div>
-              <div class="metric">
-                <div class="label">削波次数 · Clipping</div>
-                <div class="value status-good">0</div>
-                <div class="state status-good">稳定</div>
-                <div class="desc">没有发现可见削波事件。</div>
-              </div>
-              <div class="metric">
-                <div class="label">谐波失真 · THD</div>
-                <div class="value status-good">0.4%</div>
-                <div class="state status-good">稳定</div>
-                <div class="desc">谐波失真较低，没有明显破音风险。</div>
-              </div>
-            </div>
+            <div class="five-col" data-analysis-signal-grid></div>
 
             <div class="compare-table single-detail" data-single-detail-table="analysis">
               <div class="detail-toolbar">
@@ -2272,7 +2186,7 @@ tbody tr:hover td{
               </div>
               <div class="table-head">
                 <div class="intro-tags">
-                  <span class="tag" data-single-model-tag="analysis">模型: AudioBox Aesthetics</span>
+                  <span class="tag" data-single-model-tag="analysis"></span>
                   <span class="tag">单文件结果</span>
                 </div>
               </div>
@@ -2285,33 +2199,70 @@ tbody tr:hover td{
                 <tbody></tbody>
               </table>
             </div>
+
+            <div class="state-panel error" data-state-panel="analysis-single-error" style="display:none">
+              <h3>分析失败</h3>
+              <div class="error-reason" data-error-reason="analysis-single"></div>
+              <div class="retry-row">
+                <button class="ghost-btn accent" data-retry-trigger="analysis:single">重新开始分析</button>
+              </div>
+            </div>
           </div>
 
           <div class="scenario" data-scene="compare">
             <div class="two-col" style="margin-bottom:18px">
-              <div class="model-note active-model" data-model-note="analysis-compare">
-                <h4>AudioBox Aesthetics</h4>
-                <div class="fact-list">
-                  <div class="fact-row"><strong>适用</strong><span>节目成品、人声+音乐、混合内容对比</span></div>
-                  <div class="fact-row"><strong>优点</strong><span>便于比较内容质量和成片差异</span></div>
-                  <div class="fact-row"><strong>局限</strong><span>不能和语音 MOS 数值直接横向比较</span></div>
-                  <div class="fact-row"><strong>原理</strong><span>内容美学 / 内容感知评分</span></div>
-                  <div class="fact-row"><strong>指标</strong><span>PQ=制作质量，CE=内容享受，CU=内容有用，PC=制作复杂度</span></div>
+              <div class="model-note active-model" data-model-note="analysis-compare"></div>
+              <div class="model-note" data-signal-note="analysis-compare"></div>
+            </div>
+
+            <div data-compare-state="analysis-empty">
+              <div class="compare-groups-row" data-compare-groups-row="analysis" style="display:flex;gap:16px;margin-bottom:18px;justify-content:center">
+                <div class="group-card-upload" data-compare-upload-group="analysis-A">
+                  <div class="group-key">A组</div>
+                  <div class="upload-hint">点击上传文件</div>
+                  <div class="format-hint">音频 wav/flac/mp3/aac/m4a/ogg · 视频 mp4/mov/mkv/avi</div>
+                  <div class="file-status" data-group-status="analysis-A">未上传</div>
                 </div>
+                <div class="group-card-upload" data-compare-upload-group="analysis-B">
+                  <div class="group-key">B组</div>
+                  <div class="upload-hint">点击上传文件</div>
+                  <div class="format-hint">音频 wav/flac/mp3/aac/m4a/ogg · 视频 mp4/mov/mkv/avi</div>
+                  <div class="file-status" data-group-status="analysis-B">未上传</div>
+                </div>
+                <button class="group-add-btn" data-compare-add-group="analysis" type="button">+ 新增组</button>
               </div>
-              <div class="model-note" data-signal-note="analysis-compare">
-                <h4>信号分析模块</h4>
-                <div class="fact-list">
-                  <div class="fact-row"><strong>作用</strong><span>对比流程同样走完整信号分析链路</span></div>
-                  <div class="fact-row"><strong>优点</strong><span>便于区分内容提升和工程修复</span></div>
-                  <div class="fact-row"><strong>局限</strong><span>不能替代内容完成度判断</span></div>
-                  <div class="fact-row"><strong>原理</strong><span>基于响度、峰值和频域指标检测</span></div>
-                  <div class="fact-row"><strong>指标</strong><span>LUFS=综合响度，LRA=响度范围，True Peak=真实峰值，Clipping=削波次数，THD=谐波失真</span></div>
-                </div>
+              <div style="display:flex;justify-content:center;margin-bottom:18px">
+                <button class="compare-start-btn disabled" data-compare-start="analysis" type="button">
+                  开始对比分析<span class="hint">至少添加 2 组文件后开始对比分析</span>
+                </button>
               </div>
             </div>
 
-            <div class="progress-panel">
+            <div data-compare-state="analysis-ready" style="display:none">
+              <div class="compare-input">
+                <h3>对比输入</h3>
+                <p>支持最多 6 组对比，可选择自由对比或基准对比。</p>
+                <div class="group-builder" data-group-builder="analysis"></div>
+                <div class="base-select">
+                  <div class="compare-mode">
+                    <span class="compare-mode-label">对比模式：</span>
+                    <div class="mode-row" data-mode-root="analysis">
+                      <button class="mode-chip active" data-compare-kind="analysis" data-compare-mode="free" type="button">自由对比</button>
+                      <button class="mode-chip" data-compare-kind="analysis" data-compare-mode="base" type="button">基准对比</button>
+                    </div>
+                  </div>
+                  <div class="base-picker" data-base-picker="analysis">
+                    <span class="base-label">基准组：</span>
+                    <div class="base-row" data-base-root="analysis"></div>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:center;margin:18px 0">
+                <button class="compare-start-btn" data-compare-start-ready="analysis" type="button">开始对比分析</button>
+              </div>
+            </div>
+
+            <div class="progress-panel" style="display:none">
               <div class="progress-top">
                 <strong>对比任务进度</strong>
                 <span class="progress-label" data-target="100">0%</span>
@@ -2326,14 +2277,8 @@ tbody tr:hover td{
               </div>
             </div>
 
-            <div class="compare-input">
-              <h3>对比输入</h3>
-              <p>支持最多 6 组对比，可选择自由对比或基准对比。</p>
-              <div class="group-builder" data-group-builder="analysis">
-                <div class="group-card"><strong>A</strong><span>rough_mix.wav<br>初版混音</span></div>
-                <div class="group-card"><strong>B</strong><span>master_v1.wav<br>第一版母带</span></div>
-                <button class="group-add" data-add-group="analysis" type="button">+</button>
-              </div>
+            <div data-compare-state="analysis-done" style="display:none">
+              <div class="error-banner" data-error-banner="analysis-compare" style="display:none"></div>
               <div class="base-select">
                 <div class="compare-mode">
                   <span class="compare-mode-label">对比模式：</span>
@@ -2342,98 +2287,78 @@ tbody tr:hover td{
                     <button class="mode-chip" data-compare-kind="analysis" data-compare-mode="base" type="button">基准对比</button>
                   </div>
                 </div>
-                <div class="base-picker" data-base-picker="analysis">
+                <div class="base-picker" data-base-picker-done="analysis">
                   <span class="base-label">基准组：</span>
-                  <div class="base-row" data-base-root="analysis">
-                    <button class="base-pill active" type="button">A</button>
-                    <button class="base-pill" type="button">B</button>
+                  <div class="base-row" data-base-root-done="analysis"></div>
+                </div>
+              </div>
+              <div class="compare-hero">
+                <div class="compare-summary" data-compare-summary="analysis">
+                  <h3>对比结论</h3>
+                  <div class="compare-summary-default">
+                    <div class="compare-winner">
+                      <div class="winner-mark">-</div>
+                      <div class="winner-copy"><strong>推荐版本</strong><span></span></div>
+                    </div>
+                    <div class="compare-reason"></div>
+                    <div class="compare-kpis">
+                      <div class="compare-kpi"><strong>总分</strong><span class="muted">-</span></div>
+                      <div class="compare-kpi"><strong>峰值</strong><span class="muted">-</span></div>
+                      <div class="compare-kpi"><strong>状态</strong><span class="muted">-</span></div>
+                    </div>
+                  </div>
+                  <div class="compare-summary-alt">
+                    <div class="compare-winner">
+                      <div class="winner-mark">-</div>
+                      <div class="winner-copy"><strong>推荐版本</strong><span></span></div>
+                    </div>
+                    <div class="compare-reason"></div>
+                    <div class="compare-kpis">
+                      <div class="compare-kpi"><strong>相对提升</strong><span class="muted">-</span></div>
+                      <div class="compare-kpi"><strong>当前基准</strong><span class="muted">-</span></div>
+                      <div class="compare-kpi"><strong>总分</strong><span class="muted">-</span></div>
+                    </div>
                   </div>
                 </div>
+                <div class="compare-ranking" data-compare-ranking="analysis">
+                  <h3>推荐排序</h3>
+                  <div class="ranking-list"></div>
+                </div>
+              </div>
+
+              <div class="compare-table compare-detail" data-compare-table="analysis">
+                <div class="detail-toolbar">
+                  <h3>详细数据</h3>
+                  <div class="detail-switch">
+                    <button class="small-btn active" data-detail-view="metrics">模型维度</button>
+                    <button class="small-btn" data-detail-view="signal">信号分析</button>
+                    <button class="small-btn" data-detail-view="full">完整表格</button>
+                  </div>
+                </div>
+                <div class="table-head">
+                  <div class="intro-tags">
+                    <span class="tag" data-base-tag="analysis">自由对比</span>
+                    <span class="tag" data-compare-model-tag="analysis"></span>
+                    <span class="tag">含预处理追溯</span>
+                  </div>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th><span class="th-label">载入中</span><span class="th-sub">Loading</span></th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
               </div>
             </div>
 
-            <div class="compare-hero">
-              <div class="compare-summary" data-compare-summary="analysis">
-                <h3>对比结论</h3>
-                <div class="compare-summary-default">
-                  <div class="compare-winner">
-                    <div class="winner-mark">-</div>
-                    <div class="winner-copy">
-                      <strong>推荐版本</strong>
-                      <span>等待脚本填充当前最佳结果。</span>
-                    </div>
-                  </div>
-                  <div class="compare-reason">等待脚本填充结论。</div>
-                  <div class="compare-kpis">
-                    <div class="compare-kpi">
-                      <strong>总分</strong>
-                      <span class="muted">-</span>
-                    </div>
-                    <div class="compare-kpi">
-                      <strong>峰值</strong>
-                      <span class="muted">-</span>
-                    </div>
-                    <div class="compare-kpi">
-                      <strong>状态</strong>
-                      <span class="muted">-</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="compare-summary-alt">
-                  <div class="compare-winner">
-                    <div class="winner-mark">-</div>
-                    <div class="winner-copy">
-                      <strong>推荐版本</strong>
-                      <span>等待脚本填充基准对比结果。</span>
-                    </div>
-                  </div>
-                  <div class="compare-reason">等待脚本填充结论。</div>
-                  <div class="compare-kpis">
-                    <div class="compare-kpi">
-                      <strong>相对提升</strong>
-                      <span class="muted">-</span>
-                    </div>
-                    <div class="compare-kpi">
-                      <strong>当前基准</strong>
-                      <span class="muted">-</span>
-                    </div>
-                    <div class="compare-kpi">
-                      <strong>总分</strong>
-                      <span class="muted">-</span>
-                    </div>
-                  </div>
-                </div>
+            <div class="state-panel error" data-compare-state="analysis-error" style="display:none">
+              <h3>对比分析失败</h3>
+              <div class="error-reason" data-error-reason="analysis-compare"></div>
+              <div class="retry-row">
+                <button class="ghost-btn accent" data-retry-trigger="analysis:compare">重新开始对比分析</button>
               </div>
-              <div class="compare-ranking" data-compare-ranking="analysis">
-                <h3>推荐排序</h3>
-                <div class="ranking-list"></div>
-              </div>
-            </div>
-
-            <div class="compare-table compare-detail" data-compare-table="analysis">
-              <div class="detail-toolbar">
-                <h3>详细数据</h3>
-                <div class="detail-switch">
-                  <button class="small-btn active" data-detail-view="metrics">模型维度</button>
-                  <button class="small-btn" data-detail-view="signal">信号分析</button>
-                  <button class="small-btn" data-detail-view="full">完整表格</button>
-                </div>
-              </div>
-              <div class="table-head">
-                <div class="intro-tags">
-                  <span class="tag" data-base-tag="analysis">自由对比</span>
-                  <span class="tag" data-compare-model-tag="analysis">模型: AudioBox Aesthetics</span>
-                  <span class="tag">含预处理追溯</span>
-                </div>
-              </div>
-              <table>
-                <thead>
-                  <tr>
-                    <th><span class="th-label">载入中</span><span class="th-sub">Loading</span></th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
             </div>
           </div>
         </div>
