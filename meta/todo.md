@@ -2,6 +2,8 @@
 
 更新时间：2026-05-21
 
+说明：该文件已降级为内部项目推进记录，不作为公开仓库主入口文档。
+
 ## 当前已完成
 
 - [x] 网页端一级结构固定为：
@@ -9,10 +11,10 @@
   - `综合音频分析`
   - `历史`
   - `设置`
-- [x] `design/web-preview.html` 已拆分为三层：
-  - `design/web-preview.html`
-  - `design/web-preview-data.js`
-  - `design/web-preview-app.js`
+- [x] 当前网页端运行时前端已拆分为三层：
+  - `audioqas/web/static/web-preview.html`
+  - `audioqas/web/static/web-preview-data.js`
+  - `audioqas/web/static/web-preview-app.js`
 - [x] `详细数据` 已拆成三种视图：
   - `模型维度`
   - `信号分析`
@@ -28,6 +30,13 @@
 
 ## 当前高优先级
 
+- [ ] 收口开源化遗留记录，避免路径迁移后信息分裂
+  - [x] `meta/superpowers/*` 已迁入内部目录并完成主要路径收口
+  - [x] 旧 `design/web-preview.html`
+  - [x] 旧 `design/web-preview-data.js`
+  - [x] 旧 `design/web-preview-app.js`
+  - [x] 上述 3 个旧运行文件兼容残留已删除，运行时前端统一收敛到 `audioqas/web/static/`
+  - [x] 详细设计文档已迁入 `docs/design-system-detailed.md`
 - [x] `web-preview` 空状态重设计阶段已完成
   - 单文件空状态改为卡片式上传组件（与对比页 A/B 卡视觉一致）
   - 对比页上传卡支持文件名/类型/大小实时展示（`renderCompareUploadCards`）
@@ -47,7 +56,7 @@
     - "当前模型下暂无真实结果"弱提示
   - 信号分析卡边框与模型说明卡边框样式统一（`.active-signal`）
   - state-panel 间距缩减（min-height 320→180px，padding 32→24px）
-  - 设计文档已同步更新：`docs/superpowers/specs/2026-05-21-empty-state-preview-design.md`
+  - 设计文档已同步更新：`meta/superpowers/specs/2026-05-21-empty-state-preview-design.md`
 - [ ] 开始基于 `web-preview` 落真实现，按阶段推进并持续同步 `todo.md`
 - [x] `web-preview` 前端架构清理阶段已完成
   - 单文件结果区已统一为共享 renderer：
@@ -78,7 +87,7 @@
   - `audioqas/web/schemas.py`
   - `audioqas/web/registry.py`
   - `audioqas/web/services.py`
-  - `tests/test_web_service.py`
+  - `tests/python/test_web_service.py`
 - [x] 第二阶段已完成：增加最小可用 Web API 入口
   - `audioqas/web/api.py`
   - 提供：
@@ -92,16 +101,16 @@
     - `audioqas/web/run_local.py`
     - 固定启动 `127.0.0.1:8000`
   - 测试：
-    - `tests/test_web_api.py`
+    - `tests/python/test_web_api.py`
 - [x] 第三阶段第一步已完成：抽出现有模型与信号分析的 service 编排层骨架
   - `audioqas/web/runtime.py`
   - `audioqas/web/tasks.py`
-  - `tests/test_web_tasks.py`
+  - `tests/python/test_web_tasks.py`
 - [x] 第三阶段第二步已完成：让 Web API 接入 task service
   - 新增真实评测入口：
     - `POST /api/evaluate/single`
   - 测试：
-    - `tests/test_web_api.py`
+    - `tests/python/test_web_api.py`
 - [x] 第三阶段第三步已完成：增加多文件 / 对比任务 service 与 API
   - 新增接口：
     - `POST /api/evaluate/batch`
@@ -111,8 +120,8 @@
     - `CompareTaskResult`
     - `CompareInputGroup`
   - 测试：
-    - `tests/test_web_api.py`
-    - `tests/test_web_tasks.py`
+    - `tests/python/test_web_api.py`
+    - `tests/python/test_web_tasks.py`
 - [x] 第四阶段：接入最小可用网页端页面
   - [x] 前端已开始接本机 API：单文件上传评测
   - [x] 单文件页已基本收口：
@@ -148,12 +157,28 @@
   - 补更多历史任务类型
   - 补更多设置项状态组合
   - 补更多 compare 边界场景
+- [ ] 增加对“WAV 头损坏但 PCM payload 仍在”的容错支持
+  - 当前已确认存在一类 RTC dump 文件：
+    - 文件容器可被 `ffprobe` 识别为 `pcm_s16le`
+    - 文件总长度与码率可推导出真实时长
+    - 但 WAV 头中的 `RIFF/data size` 被写成 0
+    - `soundfile` / `wave` 读取时会得到 `0 frames`
+  - 典型样例：
+    - `audio_dump_playback_mixer_0.wav`
+  - 后续支持方向：
+    - 仅对 `.wav` 且 `fmt/data` 头合法、PCM 元信息完整的受控场景启用 fallback
+    - 根据文件总长度反推真实 PCM 数据区长度
+    - 用 `numpy.frombuffer` 按 `sample_rate / channels / bits_per_sample` 手动恢复样本
+    - 不对任意坏文件做泛化“强行按 PCM 读取”
+  - 目标：
+    - 让此类“头损坏但数据仍在”的 RTC dump 文件可继续进入评测链路
+    - 与 `empty_upload` / `invalid_audio_file` / `empty_audio` 明确区分
 - [ ] 如后续继续前端改动，优先做“新需求/新能力”，不再继续大规模展示层重构
 - [x] 统一运行产物默认路径到工程内
   - 预处理中间文件默认写入 `.tmp/preprocessed`
   - 上传缓存默认写入 `.tmp/web_uploads`
   - Web 状态默认写入 `.tmp/web_state`
-  - 日志固定写入 `log/`
+  - 日志固定写入 `.tmp/log/`
   - 保留环境变量覆盖能力，避免再默认落到用户目录
 - [ ] 把网页端预览当前规则继续沉淀为更稳定的数据契约：
   - 页面状态
@@ -163,9 +188,9 @@
 - [ ] 评估是否需要把 `docs/web-product-spec.md` 拆成更短的产品需求 / 交互规则两份文档
 - [~] 增加统一日志模块，支持运行态全链路定位
   - [x] 新增统一日志配置中心
-    - 日志目录固定为工程根目录 `log/`
-    - 主日志文件：`log/audioqas.log`
-    - 错误日志文件：`log/audioqas.error.log`
+    - 日志目录固定为工程根目录 `.tmp/log/`
+    - 主日志文件：`.tmp/log/audioqas.log`
+    - 错误日志文件：`.tmp/log/audioqas.error.log`
     - 单文件最大 `20MB`
     - 超过后按 `.1 .2 .3` 递增滚动
   - [x] 支持启动配置日志级别与日志参数
@@ -215,22 +240,6 @@
     - [x] 关键日志字段存在
     - [x] `ERROR` 同时进入主日志与错误日志
 
-## 桌面实现后续处理
-
-- [ ] 评估是否继续保留 `audioqas/` 下现有 PySide6 桌面实现代码
-- [ ] 如果确认不再保留桌面实现，后续删除以下遗留目录与文件：
-  - `audioqas/app.py`
-  - `audioqas/ui/*`
-  - `audioqas/core/history.py`
-  - `tests/test_ui.py`
-  - `requirements.txt` 中桌面/UI 相关依赖
-- [ ] 如果确认删除桌面实现，同步清理以下文档/叙事残留：
-  - `README.md` 中桌面遗留说明
-  - `design/DESIGN.md` 中历史实现背景说明
-  - 任何仍引用桌面端入口的开发说明
-- [ ] 如果暂时保留桌面实现，则至少把它降级为“历史实现”，不要再继续主导需求和设计文档
-- [x] 已删除 `design/design-preview.html`，避免旧桌面预览语义继续干扰当前网页端主线
-
 ## 测试与环境
 
 - [~] 增加更多网页端展示测试：
@@ -246,8 +255,8 @@
     - 单文件失败提示
     - 单文件阶段性伪进度
   - [x] 真实文件集成回归第一阶段：
-    - `tests/files/test1.wav`
-    - `tests/files/test2.wav`
+    - `tests/fixtures/test1.wav`
+    - `tests/fixtures/test2.wav`
     - 真实上传 API 契约测试
     - 真实页面对齐测试（speech / analysis / compare）
   - [x] 真实状态链路第二阶段：
@@ -267,19 +276,18 @@
     - 真实浏览器排版
     - 预览页与运行态 UI 对齐
     - 截图基线回归
-  - [x] `playwright.config.mjs` 已配置，webServer 使用项目 venv 的 FastAPI 服务（`.venv/bin/python -m audioqas.web.run_local`，port 8000）
-  - [ ] E2E 测试用例尚需对接真实 API 路径（当前测试文件已创建但未对接完成）
-  - [x] `test-results/` 已加入 `.gitignore`
+  - [x] `playwright.config.mjs` 已配置，webServer 使用本地静态文件服务，输出目录收敛到 `.tmp/test-results`
+  - [x] E2E 测试用例已对接当前真实页面路径
+  - [x] Playwright 输出目录已收敛到 `.tmp/test-results`
 - [ ] 如后续引入真实 Web 实现，补充：
   - 数据层测试
   - DOM/交互测试
   - API 契约测试
 - [x] 当前验证基线已更新为：
   - `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q`
-    - `35 passed`（空状态重设计测试）
-  - `node --test tests/web_preview_user_flow.test.mjs`
-    - `21 pass, 0 fail`
-  - `npx playwright test tests/e2e/`：暂不可用（webServer 需改为静态文件服务）
+    - `127 passed`
+  - `npm run test:web-preview`
+    - `55 pass, 0 fail`
 
 ## 文档维护
 
@@ -287,15 +295,17 @@
   - `README.md`
   - `docs/web-product-spec.md`
   - `docs/web-acceptance-checklist.md`
-  - `design/DESIGN.md`
+  - `docs/design-system.md`
+  - `docs/design-system-detailed.md`
 - [ ] 保持以下文件持续对齐：
   - `README.md`
   - `AGENTS.md`
   - `docs/web-product-spec.md`
   - `docs/web-acceptance-checklist.md`
-  - `design/DESIGN.md`
+  - `docs/design-system.md`
+  - `docs/design-system-detailed.md`
 - [ ] 后续任何网页端结构调整，都需要同步更新：
-  - `design/web-preview.html`
-  - `design/web-preview-data.js`
-  - `design/web-preview-app.js`
+  - `audioqas/web/static/web-preview.html`
+  - `audioqas/web/static/web-preview-data.js`
+  - `audioqas/web/static/web-preview-app.js`
   - 对应测试

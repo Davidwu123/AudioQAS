@@ -47,7 +47,7 @@ def setup_logging(
 ) -> None:
     global _configured
 
-    resolved_dir = Path(log_dir or os.environ.get("AUDIOQAS_LOG_DIR") or Path(__file__).resolve().parents[2] / "log")
+    resolved_dir = Path(log_dir or os.environ.get("AUDIOQAS_LOG_DIR") or Path(__file__).resolve().parents[2] / ".tmp" / "log")
     resolved_dir.mkdir(parents=True, exist_ok=True)
     resolved_level_name = (level or os.environ.get("AUDIOQAS_LOG_LEVEL", "DEBUG")).upper()
     resolved_level = getattr(logging, resolved_level_name, logging.DEBUG)

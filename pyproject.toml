@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "audioqas"
+version = "0.1.0"
+description = "AudioQAS web preview and local evaluation runtime."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+  { name = "AudioQAS contributors" }
+]
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "pydantic>=2.8",
+  "python-multipart>=0.0.9",
+  "speechmos>=0.0.1",
+  "onnxruntime>=1.17",
+  "nisqa>=2.0.post2",
+  "torch>=2.2",
+  "torchaudio>=2.2",
+  "soundfile>=0.12",
+  "numpy>=1.24",
+  "setuptools<71",
+  "audiobox_aesthetics>=0.0.4",
+  "pyloudnorm>=0.2.0",
+  "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["audioqas*"]
+
+[tool.setuptools.package-data]
+"audioqas.models.weights" = ["*.tar"]

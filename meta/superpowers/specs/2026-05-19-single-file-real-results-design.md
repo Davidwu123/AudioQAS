@@ -4,9 +4,9 @@
 
 当前仓库的网页端已经具备：
 
-- `design/web-preview.html` 定义的单文件/对比页面结构
-- `design/web-preview-data.js` 中的展示映射与示例数据
-- `design/web-preview-app.js` 中的基础状态、渲染与上传调用
+- `audioqas/web/static/web-preview.html` 定义的单文件/对比页面结构
+- `audioqas/web/static/web-preview-data.js` 中的展示映射与示例数据
+- `audioqas/web/static/web-preview-app.js` 中的基础状态、渲染与上传调用
 - `audioqas/web/api.py` 提供的单文件上传评测接口 `POST /api/evaluate/upload`
 
 但当前单文件页面仍主要依赖静态示例内容。用户即使上传真实文件，页面也还没有把返回结果完整地映射进现有产品结构。
@@ -60,15 +60,15 @@
 
 ### 5.1 文件职责
 
-- `design/web-preview.html`
+- `audioqas/web/static/web-preview.html`
   - 保留结构壳和挂载点
   - 不继续承载业务规则
 
-- `design/web-preview-data.js`
+- `audioqas/web/static/web-preview-data.js`
   - 保存展示映射、列定义、标签文案、模型维度说明
   - 新增必要的真实结果展示辅助函数
 
-- `design/web-preview-app.js`
+- `audioqas/web/static/web-preview-app.js`
   - 保存页面状态
   - 调用上传接口
   - 将接口返回值映射为页面内部显示模型
@@ -268,7 +268,7 @@ runtimeState.single = {
 
 - 必须遵守 `AGENTS.md` 中的边界：
   - `web-preview.html` 保持轻量
-  - 业务展示逻辑集中到 `design/web-preview-data.js`
-  - DOM 状态与渲染逻辑集中到 `design/web-preview-app.js`
+  - 业务展示逻辑集中到 `audioqas/web/static/web-preview-data.js`
+  - DOM 状态与渲染逻辑集中到 `audioqas/web/static/web-preview-app.js`
 - 不恢复旧桌面 App 叙事
 - 不把本次工作扩展为历史页或对比页的大改造

@@ -4,7 +4,7 @@
 
 **Goal:** Make the web preview feature-complete while converging the frontend into a cleaner architecture: preview and runtime pages must share display semantics, app/data boundaries must be explicit, and obvious duplication/state sprawl must be removed.
 
-**Architecture:** Continue the existing convergence direction by moving display semantics and view-model shaping into `design/web-preview-data.js`, while shrinking `design/web-preview-app.js` into DOM lookup, event binding, and render orchestration. Execute the cleanup in phases: first finish single-file renderer unification, then unify compare renderer output, then split state and action boundaries, and finally remove residual duplication and stabilize tests.
+**Architecture:** Continue the existing convergence direction by moving display semantics and view-model shaping into `audioqas/web/static/web-preview-data.js`, while shrinking `audioqas/web/static/web-preview-app.js` into DOM lookup, event binding, and render orchestration. Execute the cleanup in phases: first finish single-file renderer unification, then unify compare renderer output, then split state and action boundaries, and finally remove residual duplication and stabilize tests.
 
 **Tech Stack:** Vanilla JS, shared UMD-style preview data module, jsdom/node tests, pytest static checks
 
@@ -29,11 +29,11 @@
 ### Phase 1: Finish Single Renderer Unification
 
 **Files:**
-- Modify: `design/web-preview-app.js`
-- Modify: `design/web-preview-data.js`
-- Modify: `tests/test_web_preview_app.py`
-- Modify: `tests/web_preview_data.test.mjs`
-- Modify: `tests/web_preview_user_flow.test.mjs`
+- Modify: `audioqas/web/static/web-preview-app.js`
+- Modify: `audioqas/web/static/web-preview-data.js`
+- Modify: `tests/python/test_web_preview_app.py`
+- Modify: `tests/web/web_preview_data.test.mjs`
+- Modify: `tests/web/web_preview_user_flow.test.mjs`
 
 - [x] **Step 1: Introduce shared single DOM helpers**
 - [x] **Step 2: Move hero/model/signal card display semantics into `buildSingleFileViewModel()`**
@@ -43,8 +43,8 @@
 
 Run:
 ```bash
-QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_web_preview_app.py -q
-node --test tests/web_preview_data.test.mjs tests/web_preview_user_flow.test.mjs
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/python/test_web_preview_app.py -q
+node --test tests/web/web_preview_data.test.mjs tests/web/web_preview_user_flow.test.mjs
 ```
 
 Expected:
@@ -56,11 +56,11 @@ Expected:
 ### Phase 2: Unify Compare Ranking/Table Rendering
 
 **Files:**
-- Modify: `design/web-preview-data.js`
-- Modify: `design/web-preview-app.js`
-- Modify: `tests/web_preview_data.test.mjs`
-- Modify: `tests/web_preview_user_flow.test.mjs`
-- Modify: `tests/web_preview_user_flow_real.test.mjs`
+- Modify: `audioqas/web/static/web-preview-data.js`
+- Modify: `audioqas/web/static/web-preview-app.js`
+- Modify: `tests/web/web_preview_data.test.mjs`
+- Modify: `tests/web/web_preview_user_flow.test.mjs`
+- Modify: `tests/web/web_preview_user_flow_real.test.mjs`
 
 - [x] **Step 1: Add shared compare ranking/table view-model helpers**
 
@@ -88,7 +88,7 @@ Minimum assertions:
 
 Run:
 ```bash
-node --test tests/web_preview_data.test.mjs tests/web_preview_user_flow.test.mjs tests/web_preview_user_flow_real.test.mjs
+node --test tests/web/web_preview_data.test.mjs tests/web/web_preview_user_flow.test.mjs tests/web/web_preview_user_flow_real.test.mjs
 ```
 
 Expected:
@@ -100,9 +100,9 @@ Expected:
 ### Phase 3: Tighten App/Data Boundary
 
 **Files:**
-- Modify: `design/web-preview-data.js`
-- Modify: `design/web-preview-app.js`
-- Modify: `tests/test_web_preview_app.py`
+- Modify: `audioqas/web/static/web-preview-data.js`
+- Modify: `audioqas/web/static/web-preview-app.js`
+- Modify: `tests/python/test_web_preview_app.py`
 
 - [x] **Step 1: Audit remaining display semantics still assembled inside `web-preview-app.js`**
 
@@ -123,7 +123,7 @@ Target assertions:
 
 Run:
 ```bash
-QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_web_preview_app.py -q
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/python/test_web_preview_app.py -q
 ```
 
 Expected:
@@ -135,9 +135,9 @@ Expected:
 ### Phase 4: Slice Runtime State
 
 **Files:**
-- Modify: `design/web-preview-app.js`
-- Modify: `tests/test_web_preview_app.py`
-- Modify: `tests/web_preview_user_flow.test.mjs`
+- Modify: `audioqas/web/static/web-preview-app.js`
+- Modify: `tests/python/test_web_preview_app.py`
+- Modify: `tests/web/web_preview_user_flow.test.mjs`
 
 - [x] **Step 1: Split `runtimeState` into explicit slices**
 
@@ -158,8 +158,8 @@ If full object rename is too disruptive, at minimum create nested slice objects 
 
 Run:
 ```bash
-QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_web_preview_app.py -q
-node --test tests/web_preview_user_flow.test.mjs
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/python/test_web_preview_app.py -q
+node --test tests/web/web_preview_user_flow.test.mjs
 ```
 
 Expected:
@@ -171,9 +171,9 @@ Expected:
 ### Phase 5: Introduce Action Helpers For Event Flows
 
 **Files:**
-- Modify: `design/web-preview-app.js`
-- Modify: `tests/web_preview_user_flow.test.mjs`
-- Modify: `tests/web_preview_user_flow_real.test.mjs`
+- Modify: `audioqas/web/static/web-preview-app.js`
+- Modify: `tests/web/web_preview_user_flow.test.mjs`
+- Modify: `tests/web/web_preview_user_flow_real.test.mjs`
 
 - [x] **Step 1: Extract action helpers**
 
@@ -193,7 +193,7 @@ Target helpers:
 
 Run:
 ```bash
-node --test tests/web_preview_user_flow.test.mjs tests/web_preview_user_flow_real.test.mjs
+node --test tests/web/web_preview_user_flow.test.mjs tests/web/web_preview_user_flow_real.test.mjs
 ```
 
 Expected:
@@ -205,13 +205,13 @@ Expected:
 ### Phase 6: Remove Residual Duplication And Stabilize Tests
 
 **Files:**
-- Modify: `design/web-preview-app.js`
-- Modify: `design/web-preview-data.js`
-- Modify: `tests/test_web_api.py`
-- Modify: `tests/test_web_preview_app.py`
-- Modify: `tests/web_preview_data.test.mjs`
-- Modify: `tests/web_preview_user_flow.test.mjs`
-- Modify: `tests/web_preview_user_flow_real.test.mjs`
+- Modify: `audioqas/web/static/web-preview-app.js`
+- Modify: `audioqas/web/static/web-preview-data.js`
+- Modify: `tests/python/test_web_api.py`
+- Modify: `tests/python/test_web_preview_app.py`
+- Modify: `tests/web/web_preview_data.test.mjs`
+- Modify: `tests/web/web_preview_user_flow.test.mjs`
+- Modify: `tests/web/web_preview_user_flow_real.test.mjs`
 
 - [x] **Step 1: Remove dead/obsolete helpers and copy templates**
 - [x] **Step 2: Continue isolating environment-sensitive tests from local persisted state**

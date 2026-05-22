@@ -13,7 +13,7 @@ from audioqas.web.history_store import InMemoryHistoryStore
 
 
 ROOT = Path(__file__).resolve().parents[2]
-FILES_DIR = ROOT / "tests" / "files"
+FILES_DIR = ROOT / "tests" / "fixtures"
 
 
 def _client() -> TestClient:

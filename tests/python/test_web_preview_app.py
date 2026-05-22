@@ -1,9 +1,9 @@
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
-HTML_PATH = ROOT / "design" / "web-preview.html"
-APP_PATH = ROOT / "design" / "web-preview-app.js"
+ROOT = Path(__file__).resolve().parents[2]
+HTML_PATH = ROOT / "audioqas" / "web" / "static" / "web-preview.html"
+APP_PATH = ROOT / "audioqas" / "web" / "static" / "web-preview-app.js"
 
 
 def test_web_preview_app_file_exists():
@@ -278,5 +278,3 @@ def test_html_has_error_banner_in_compare_done_panel():
     html = HTML_PATH.read_text(encoding="utf-8")
     assert 'data-error-banner="eval-compare"' in html
     assert 'data-error-banner="analysis-compare"' in html
-
-

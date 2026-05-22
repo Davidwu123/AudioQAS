@@ -1,14 +1,14 @@
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
-HTML_PATH = ROOT / "design" / "web-preview.html"
-DATA_PATH = ROOT / "design" / "web-preview-data.js"
+ROOT = Path(__file__).resolve().parents[2]
+HTML_PATH = ROOT / "audioqas" / "web" / "static" / "web-preview.html"
+DATA_PATH = ROOT / "audioqas" / "web" / "static" / "web-preview-data.js"
 
 
 def test_web_preview_uses_shared_data_file():
     html = HTML_PATH.read_text(encoding="utf-8")
-    assert 'location.protocol === "file:" ? "." : "/design"' in html
+    assert 'location.protocol === "file:" ? "." : "/static-preview"' in html
     assert 'web-preview-data.js?v=' in html
     assert 'web-preview-app.js?v=' in html
 
@@ -29,5 +29,6 @@ def test_web_preview_no_duplicate_local_compare_group_defs():
 
 def test_web_preview_html_uses_fresh_asset_version_strategy():
     html = HTML_PATH.read_text(encoding="utf-8")
-    assert "2026-05-20-architecture-cleanup-1" in html
+    assert 'const assetVersion = location.protocol === "file:"' in html
+    assert ': "2026-05-21-compare-upload-cards";' in html
     assert "String(Date.now())" in html

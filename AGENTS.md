@@ -8,10 +8,10 @@ This repository currently focuses on the **web preview** of AudioQAS.
 
 Primary files:
 
-- `design/web-preview.html`
-- `design/web-preview-data.js`
-- `design/web-preview-app.js`
-- `design/DESIGN.md`
+- `audioqas/web/static/web-preview.html`
+- `audioqas/web/static/web-preview-data.js`
+- `audioqas/web/static/web-preview-app.js`
+- `docs/design-system-detailed.md`
 - `docs/web-product-spec.md`
 
 ## Run & Verify
@@ -34,7 +34,7 @@ npm run test:web-preview
 
 - PC browser only
 - Do not restore legacy desktop-app framing in product docs
-- Feature scope must follow `design/web-preview.html` exactly.
+- Feature scope must follow `audioqas/web/static/web-preview.html` exactly.
 - Support only what the current web preview defines:
   - `添加文件`
   - `对比评测`
@@ -53,9 +53,9 @@ npm run test:web-preview
 
 ## Maintenance Rules
 
-- Shared business data belongs in `design/web-preview-data.js`
-- Rendering logic belongs in `design/web-preview-app.js`
-- `design/web-preview.html` should remain thin
+- Shared business data belongs in `audioqas/web/static/web-preview-data.js`
+- Rendering logic belongs in `audioqas/web/static/web-preview-app.js`
+- `audioqas/web/static/web-preview.html` should remain thin
 - Any business/display logic change should be covered by tests
 
 ## Review Checklist
@@ -73,7 +73,7 @@ npm run test:web-preview
 
 - Default to continuous execution once a plan is approved. Do not pause for small confirmations between ordinary implementation steps.
 - When the user states a high-level goal and does not ask for step-by-step confirmation, treat it as goal-driven continuous execution until blocked by a root-level red-line decision, a major direction change, or a plan gap that cannot be resolved safely from repository context.
-- For multi-phase or structural work, write/update the corresponding plan under `docs/superpowers/plans/` first, then execute phase-by-phase against that plan.
+- For multi-phase or structural work, write/update the corresponding plan under `meta/superpowers/plans/` first, then execute phase-by-phase against that plan.
 - During execution, only interrupt for confirmation when:
   1. a root `AGENTS.md` red-line operation is required
   2. the implementation direction must change in a non-trivial way

@@ -64,9 +64,9 @@
 ### 4.1 方案内容
 
 - 继续使用当前：
-  - `design/web-preview.html`
-  - `design/web-preview-data.js`
-  - `design/web-preview-app.js`
+  - `audioqas/web/static/web-preview.html`
+  - `audioqas/web/static/web-preview-data.js`
+  - `audioqas/web/static/web-preview-app.js`
 - 现有结果 view 不删除
 - 在主预览页内新增初始化态、待开始态、运行态、完成态和失败态的状态分支
 - 所有页面仍然维持一个物理入口，不拆成长期并存的第二个预览页

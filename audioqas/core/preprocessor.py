@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 import numpy as np
@@ -28,6 +29,11 @@ def configure_preprocessor(*, resample: bool, to_mono: bool, extract_audio: bool
 
 def current_preprocess_settings() -> dict[str, bool]:
     return dict(PREPROCESS_SETTINGS)
+
+
+def ensure_non_empty_audio(audio: np.ndarray) -> None:
+    if audio.size == 0 or len(audio) == 0:
+        raise ValueError("empty_audio")
 
 
 def format_pipeline_steps(steps: list[str], model_label: str) -> str:
@@ -71,6 +77,8 @@ def _extract_audio(video_path: str, target_sr: int, out_name: str | None = None)
     """Extract audio from video, resample to target_sr, convert to mono WAV."""
     if out_name is None:
         out_name = build_preprocessed_name(video_path, target_sr=target_sr, is_video=True)
+    if shutil.which("ffmpeg") is None:
+        raise ValueError("ffmpeg_missing")
     out_path = os.path.join(_ensure_preprocess_dir(), out_name)
     with set_event("branch_selected"):
         logger.info("branch=video_extract file=%s target_sr=%s output=%s", video_path, target_sr, out_path)

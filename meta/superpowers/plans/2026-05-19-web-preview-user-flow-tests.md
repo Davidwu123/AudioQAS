@@ -4,7 +4,7 @@
 
 **Goal:** Add automated web-preview tests that follow real user operation flows and verify rendered results stay aligned with the reviewed `web-preview` product shape.
 
-**Architecture:** Keep the existing API tests and data-mapping tests as lower-level guards, then add a new Node-based DOM test layer that boots the real `design/web-preview.html` + `design/web-preview-data.js` + `design/web-preview-app.js` together. The new layer must drive clicks, file selection, mocked fetch responses, and DOM assertions so the product is verified by what the user actually sees, not by internal helper output alone.
+**Architecture:** Keep the existing API tests and data-mapping tests as lower-level guards, then add a new Node-based DOM test layer that boots the real `audioqas/web/static/web-preview.html` + `audioqas/web/static/web-preview-data.js` + `audioqas/web/static/web-preview-app.js` together. The new layer must drive clicks, file selection, mocked fetch responses, and DOM assertions so the product is verified by what the user actually sees, not by internal helper output alone.
 
 **Tech Stack:** Node test runner, `jsdom`, static HTML/JS preview assets, existing pytest suite
 
@@ -12,18 +12,18 @@
 
 ## File Structure
 
-- Create: `tests/web_preview_user_flow.test.mjs`
+- Create: `tests/web/web_preview_user_flow.test.mjs`
   - End-to-end-like DOM flow tests for `web-preview`
   - Owns test harness helpers for loading HTML, stubbing `fetch`, simulating upload, and reading rendered DOM
 - Modify: `package.json`
   - Add `jsdom`-backed test command for the new DOM flow layer
-  - Keep existing `tests/web_preview_data.test.mjs`
+  - Keep existing `tests/web/web_preview_data.test.mjs`
 - Modify: `todo.md`
   - Mark DOM-level user-flow coverage as started/completed once implemented
 - Optional Create: `tests/fixtures/web_preview_payloads.mjs`
-  - Shared realistic mocked API payloads if `tests/web_preview_user_flow.test.mjs` becomes too large
+  - Shared realistic mocked API payloads if `tests/web/web_preview_user_flow.test.mjs` becomes too large
 
-The new DOM test file should stay focused on reviewed product flows, not helper internals. Data-format helper assertions remain in `tests/web_preview_data.test.mjs`.
+The new DOM test file should stay focused on reviewed product flows, not helper internals. Data-format helper assertions remain in `tests/web/web_preview_data.test.mjs`.
 
 ### Case Matrix To Cover
 
@@ -63,8 +63,8 @@ Do not add a looser “snapshot only” strategy. Snapshots can help later, but 
 
 The DOM harness should:
 
-- Load `design/web-preview.html` as the source of truth
-- Inline or evaluate `design/web-preview-data.js` and `design/web-preview-app.js` in a `jsdom` window
+- Load `audioqas/web/static/web-preview.html` as the source of truth
+- Inline or evaluate `audioqas/web/static/web-preview-data.js` and `audioqas/web/static/web-preview-app.js` in a `jsdom` window
 - Stub `window.fetch`, `window.alert`, `requestAnimationFrame`, `performance.now`, and hidden file input behavior
 - Provide helper methods such as:
   - `bootPreview({ fetchMap })`
@@ -79,24 +79,24 @@ Do not change production `web-preview` code just to make tests convenient unless
 
 ### Test Strategy Boundaries
 
-- `tests/test_web_api.py` continues guarding API contract shape
-- `tests/web_preview_data.test.mjs` continues guarding mapping helpers
-- `tests/web_preview_user_flow.test.mjs` becomes the source of truth for user-operation rendering behavior
+- `tests/python/test_web_api.py` continues guarding API contract shape
+- `tests/web/web_preview_data.test.mjs` continues guarding mapping helpers
+- `tests/web/web_preview_user_flow.test.mjs` becomes the source of truth for user-operation rendering behavior
 
 This avoids mixing DOM flow assertions into Python string checks or helper-unit tests.
 
 ### Task 1: Add jsdom-based user-flow test harness
 
 **Files:**
-- Create: `tests/web_preview_user_flow.test.mjs`
+- Create: `tests/web/web_preview_user_flow.test.mjs`
 - Modify: `package.json`
-- Reference: `design/web-preview.html`
-- Reference: `design/web-preview-data.js`
-- Reference: `design/web-preview-app.js`
+- Reference: `audioqas/web/static/web-preview.html`
+- Reference: `audioqas/web/static/web-preview-data.js`
+- Reference: `audioqas/web/static/web-preview-app.js`
 
 - [ ] **Step 1: Write the failing harness smoke test**
 
-Add the first test to `tests/web_preview_user_flow.test.mjs`:
+Add the first test to `tests/web/web_preview_user_flow.test.mjs`:
 
 ```js
 import test from "node:test";
@@ -120,7 +120,7 @@ test("web preview boots in jsdom and defaults to eval single scene", async () =>
 Run:
 
 ```bash
-node --test tests/web_preview_user_flow.test.mjs
+node --test tests/web/web_preview_user_flow.test.mjs
 ```
 
 Expected:
@@ -128,11 +128,11 @@ Expected:
 
 - [ ] **Step 3: Add the minimal harness and test command**
 
-Implement in `tests/web_preview_user_flow.test.mjs`:
+Implement in `tests/web/web_preview_user_flow.test.mjs`:
 
 - imports for `fs`, `path`, `vm`, and `jsdom`
 - `bootPreview(...)` helper that:
-  - reads `design/web-preview.html`
+  - reads `audioqas/web/static/web-preview.html`
   - creates `JSDOM`
   - stubs `window.fetch`
   - stubs `window.alert`
@@ -144,7 +144,7 @@ Update `package.json`:
 ```json
 {
   "scripts": {
-    "test:web-preview": "node --test tests/web_preview_data.test.mjs tests/web_preview_user_flow.test.mjs"
+    "test:web-preview": "node --test tests/web/web_preview_data.test.mjs tests/web/web_preview_user_flow.test.mjs"
   }
 }
 ```
@@ -154,7 +154,7 @@ Update `package.json`:
 Run:
 
 ```bash
-node --test tests/web_preview_user_flow.test.mjs
+node --test tests/web/web_preview_user_flow.test.mjs
 ```
 
 Expected:
@@ -174,14 +174,14 @@ Expected:
 - [ ] **Step 6: Commit**
 
 ```bash
-git add package.json tests/web_preview_user_flow.test.mjs
+git add package.json tests/web/web_preview_user_flow.test.mjs
 git commit -m "test: add web preview user-flow dom harness"
 ```
 
 ### Task 2: Cover single-file user flows against reviewed preview output
 
 **Files:**
-- Modify: `tests/web_preview_user_flow.test.mjs`
+- Modify: `tests/web/web_preview_user_flow.test.mjs`
 - Optional Create: `tests/fixtures/web_preview_payloads.mjs`
 - Reference: `docs/web-acceptance-checklist.md`
 
@@ -212,7 +212,7 @@ test("speech single-file dnsmos flow renders preview-aligned result blocks", asy
 Run:
 
 ```bash
-node --test tests/web_preview_user_flow.test.mjs --test-name-pattern "single-file"
+node --test tests/web/web_preview_user_flow.test.mjs --test-name-pattern "single-file"
 ```
 
 Expected:
@@ -253,7 +253,7 @@ Each test must assert visible DOM labels and at least one rendered numeric value
 Run:
 
 ```bash
-node --test tests/web_preview_user_flow.test.mjs --test-name-pattern "single-file|audiobox|nisqa"
+node --test tests/web/web_preview_user_flow.test.mjs --test-name-pattern "single-file|audiobox|nisqa"
 ```
 
 Expected:
@@ -273,17 +273,17 @@ Expected:
 - [ ] **Step 7: Commit**
 
 ```bash
-git add tests/web_preview_user_flow.test.mjs tests/fixtures/web_preview_payloads.mjs package.json
+git add tests/web/web_preview_user_flow.test.mjs tests/fixtures/web_preview_payloads.mjs package.json
 git commit -m "test: cover single-file web preview user flows"
 ```
 
 ### Task 3: Cover compare user flows with free/base mode assertions
 
 **Files:**
-- Modify: `tests/web_preview_user_flow.test.mjs`
+- Modify: `tests/web/web_preview_user_flow.test.mjs`
 - Optional Modify: `tests/fixtures/web_preview_payloads.mjs`
-- Reference: `design/web-preview.html`
-- Reference: `design/web-preview-app.js`
+- Reference: `audioqas/web/static/web-preview.html`
+- Reference: `audioqas/web/static/web-preview-app.js`
 
 - [ ] **Step 1: Write the failing speech compare free-mode test**
 
@@ -315,7 +315,7 @@ test("speech compare free mode renders recommended version and ranking", async (
 Run:
 
 ```bash
-node --test tests/web_preview_user_flow.test.mjs --test-name-pattern "compare"
+node --test tests/web/web_preview_user_flow.test.mjs --test-name-pattern "compare"
 ```
 
 Expected:
@@ -357,7 +357,7 @@ Each test must assert:
 Run:
 
 ```bash
-node --test tests/web_preview_user_flow.test.mjs --test-name-pattern "compare|base mode|nisqa"
+node --test tests/web/web_preview_user_flow.test.mjs --test-name-pattern "compare|base mode|nisqa"
 ```
 
 Expected:
@@ -377,14 +377,14 @@ Expected:
 - [ ] **Step 7: Commit**
 
 ```bash
-git add tests/web_preview_user_flow.test.mjs tests/fixtures/web_preview_payloads.mjs
+git add tests/web/web_preview_user_flow.test.mjs tests/fixtures/web_preview_payloads.mjs
 git commit -m "test: cover compare web preview user flows"
 ```
 
 ### Task 4: Cover history, settings, progress, and error flows
 
 **Files:**
-- Modify: `tests/web_preview_user_flow.test.mjs`
+- Modify: `tests/web/web_preview_user_flow.test.mjs`
 - Optional Modify: `tests/fixtures/web_preview_payloads.mjs`
 - Modify: `todo.md`
 
@@ -407,7 +407,7 @@ Assert:
 Run:
 
 ```bash
-node --test tests/web_preview_user_flow.test.mjs --test-name-pattern "history"
+node --test tests/web/web_preview_user_flow.test.mjs --test-name-pattern "history"
 ```
 
 Expected:
@@ -449,7 +449,7 @@ Update `todo.md`:
 Run:
 
 ```bash
-node --test tests/web_preview_user_flow.test.mjs --test-name-pattern "history|settings|失败|进度"
+node --test tests/web/web_preview_user_flow.test.mjs --test-name-pattern "history|settings|失败|进度"
 ```
 
 Expected:
@@ -471,7 +471,7 @@ Expected:
 - [ ] **Step 8: Commit**
 
 ```bash
-git add tests/web_preview_user_flow.test.mjs tests/fixtures/web_preview_payloads.mjs todo.md
+git add tests/web/web_preview_user_flow.test.mjs tests/fixtures/web_preview_payloads.mjs todo.md
 git commit -m "test: add web preview user-flow coverage for history and settings"
 ```
 
@@ -491,11 +491,11 @@ Placeholder scan:
 
 Type consistency check:
 
-- File names and commands consistently use `tests/web_preview_user_flow.test.mjs`
+- File names and commands consistently use `tests/web/web_preview_user_flow.test.mjs`
 - Preview command remains `npm run test:web-preview`
 - New helper names are reused consistently across tasks
 
-Plan complete and saved to `docs/superpowers/plans/2026-05-19-web-preview-user-flow-tests.md`. Two execution options:
+Plan complete and saved to `meta/superpowers/plans/2026-05-19-web-preview-user-flow-tests.md`. Two execution options:
 
 1. Subagent-Driven (recommended) - I dispatch a fresh subagent per task, review between tasks, fast iteration
 

@@ -8,10 +8,10 @@ import { JSDOM } from "jsdom";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..");
-const htmlPath = path.join(repoRoot, "design", "web-preview.html");
-const dataScriptPath = path.join(repoRoot, "design", "web-preview-data.js");
-const appScriptPath = path.join(repoRoot, "design", "web-preview-app.js");
+const repoRoot = path.resolve(__dirname, "..", "..");
+const htmlPath = path.join(repoRoot, "audioqas", "web", "static", "web-preview.html");
+const dataScriptPath = path.join(repoRoot, "audioqas", "web", "static", "web-preview-data.js");
+const appScriptPath = path.join(repoRoot, "audioqas", "web", "static", "web-preview-app.js");
 
 function createFetch(fetchMap) {
   const calls = [];
@@ -56,7 +56,7 @@ async function bootPreview({ fetchMap }) {
   };
   const html = fs.readFileSync(htmlPath, "utf8");
   const dom = new JSDOM(html, {
-    url: "http://localhost/design/web-preview.html",
+    url: "http://localhost/static-preview/web-preview.html",
     runScripts: "outside-only",
     pretendToBeVisual: true,
   });

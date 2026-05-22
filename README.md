@@ -1,97 +1,297 @@
+<div align="center">
+
 # AudioQAS
 
-AudioQAS 当前仓库主线是网页端产品预览，不再以旧桌面 App 文档为中心。
+### Local-first Web Workbench for Audio Quality Assessment
 
-当前状态以 `web-preview` 为准：前端预览、最小 Web API、本机运行入口和对应测试已经接通。
+**Speech evaluation · Mixed-content analysis · Signal metrics · 100% local**
 
-核心文件：
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](#)
+[![Node.js 18+](https://img.shields.io/badge/Node.js-18+-blue.svg)](#)
+[![FastAPI](https://img.shields.io/badge/Framework-FastAPI-009688.svg)](#)
 
-- `design/web-preview.html`
-- `design/web-preview-data.js`
-- `design/web-preview-app.js`
+[![PC Browser](https://img.shields.io/badge/Target-PC_Browser_only-orange.svg)](#)
 
-核心文档：
+</div>
 
-- `docs/web-product-spec.md`：唯一产品/需求文档
-- `docs/web-acceptance-checklist.md`：当前网页端验收清单
-- `design/DESIGN.md`：唯一设计系统文档
-- `AGENTS.md`：唯一 agent 工作说明
+---
 
-运行与验证：
+## Get Started
 
-```bash
-python3.12 -m venv .venv
-.venv/bin/python -m pip install pytest
-QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q
-npm run test:web-preview
-```
+Quick start only needs Python:
 
-本机启动网页端预览与 API：
+- Python `3.10+`
+- `ffmpeg` on `PATH` for video upload and automatic audio extraction
 
 ```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -e .
 .venv/bin/python -m audioqas.web.run_local
 ```
 
-启动后访问：
+Then open **http://127.0.0.1:8000**
 
-```text
-http://127.0.0.1:8000
+> Some Python dependencies are heavy (`torch`, `torchaudio`, `onnxruntime`). Expect longer install time on first run.
+> Video input requires `ffmpeg` to be available on your system `PATH`.
+> `ffmpeg` is currently treated as a required system dependency, but this repository does not yet pin or verify a minimum `ffmpeg` version.
+
+### Developer Setup
+
+Use this if you want to run tests or contribute:
+
+- Python `3.10+`
+- Node.js `18+`
+- npm
+- `ffmpeg` on `PATH`
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -e ".[dev]"
+npm install
+npx playwright install
 ```
 
-运行产物路径约定：
+Common system install examples:
 
-- 日志固定写入工程根目录 `log/`
-- 预处理中间文件默认写入工程根目录 `.tmp/preprocessed`
-- Web 上传缓存默认写入工程根目录 `.tmp/web_uploads`
-- Web 状态文件默认写入工程根目录 `.tmp/web_state`
-- `log/` 用于排障保留，`.tmp/` 下内容属于运行产物，可按需清理
-- 如需覆盖预处理目录，可设置环境变量 `AUDIOQAS_PREPROCESS_DIR`
+```bash
+# macOS
+brew install ffmpeg
 
-当前页面完成度：
+# Ubuntu / Debian
+sudo apt-get update && sudo apt-get install -y ffmpeg
+```
 
-- `纯人声评测`
-  - `单文件测评` 已接入真实上传评测
-  - `对比评测` 已接入真实对比上传
-  - `DNSMOS / NISQA` 结果、信号分析、追溯、详细表格已联动
-- `综合音频分析`
-  - `单文件分析` 已接入真实上传评测
-  - `对比分析` 已接入真实对比上传
-  - `AudioBox Aesthetics` 结果、信号分析、追溯、详细表格已联动
-- `历史`
-  - 已接入 `/api/history`
-  - 已支持真实写入、真实读取、空态和错误态
-  - 切到历史页时会自动刷新最新列表
-- `设置`
-  - 已接入 `/api/settings`
-  - `预处理追溯` 与 `默认对比模式` 已接入真实持久化
-  - 刷新页面后设置状态会恢复
+That's it — no production deployment, no cloud services, everything runs locally.
 
-当前本机 API 入口：
+---
 
-- `GET /`
-- `GET /api/health`
-- `GET /api/bootstrap`
-- `GET /api/navigation`
-- `GET /api/models`
-- `GET /api/signal-metrics`
-- `GET /api/history`
-- `GET /api/history/{item_id}`
-- `GET /api/settings`
-- `POST /api/evaluate/single`
-- `POST /api/evaluate/batch`
-- `POST /api/evaluate/compare`
-- `POST /api/evaluate/upload`
-- `POST /api/evaluate/upload-batch`
-- `POST /api/evaluate/compare-upload`
-- `POST /api/settings`
+## What Can You Do Today
 
-桌面端遗留实现说明：
+| | |
+|---|---|
+| **Speech Quality Evaluation** | Upload pure-voice audio, get DNSMOS / NISQA scores + signal analysis |
+| **Mixed-content Analysis** | Upload music+voice or video tracks, get AudioBox Aesthetics + signal analysis |
+| **Single-file Flow** | One file → model results + signal metrics + preprocessing trace + engineering advice |
+| **Multi-group Compare** | 2–6 groups → ranking + recommendation + free/base comparison modes |
+| **History** | Real task history backed by local state, auto-refresh on page switch |
+| **Settings** | Default model, preprocessing trace toggle, compare mode — all persisted locally |
+| **Export** | CSV / JSON export with `request_id` in filename |
 
-- 当前仓库主线已经切到网页端
-- `audioqas/` 下仍保留一批旧 PySide6 桌面实现，仅作为历史实现存在
-- 后续如果确认不再保留桌面端，优先删除：
-  - `audioqas/app.py`
-  - `audioqas/ui/*`
-  - `audioqas/core/history.py`
-  - `tests/test_ui.py`
-  - `requirements.txt` 中桌面/UI 相关依赖
+---
+
+## Why AudioQAS
+
+Most audio quality tools are either:
+
+- **Cloud-only** — your audio leaves your machine
+- **Command-line only** — no visual feedback, no compare, no history
+- **Single-model** — one MOS score, no cross-model or signal-level view
+
+AudioQAS is different:
+
+- **100% local** — no API keys, no external services, audio never leaves your machine
+- **Web workbench** — dark-theme glass-panel UI designed for audio engineers, not casual users
+- **Multi-model** — DNSMOS, NISQA, AudioBox Aesthetics, each with independent results and cache
+- **Signal metrics alongside AI** — LUFS, True Peak, Clipping, THD, LRA — not just MOS numbers
+- **Full preprocessing trace** — every step from raw file to model input is visible and auditable
+- **Compare that makes sense** — free comparison for ranking, baseline comparison for delta analysis
+
+---
+
+## Key Features
+
+| | |
+|---|---|
+| **4-page structure** | 纯人声评测 · 综合音频分析 · 历史 · 设置 |
+| **3 AI models** | DNSMOS (OVRL/SIG/BAK) · NISQA (OVRL/NOI/DIS/COL/LOUD) · AudioBox (PQ/CE/CU/PC) |
+| **Signal analysis** | LUFS · LRA · True Peak · Clipping · THD — always present, not optional |
+| **Compare up to 6 groups** | A/B/C/D/E/F with dynamic `+` expansion |
+| **Free vs Baseline compare** | Switch modes, all rankings and deltas update instantly |
+| **Preprocessing trace** | resample → mono convert → video extract → passthrough — every step visible |
+| **Real byte progress** | XHR `upload.onprogress` for real upload tracking, fetch fallback in jsdom |
+| **Result cache by model** | Switch models without losing other model's cached results |
+| **Error + done coexistence** | Failed compare still shows last successful results with error banner |
+| **Export with request_id** | `audioqas_eval_single_abc123.json` — every export is traceable |
+
+---
+
+## Architecture
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│                     Browser (PC only)                          │
+│                                                               │
+│  web-preview.html ─── web-preview-app.js ─── web-preview-data │
+│         │                          │                           │
+│    DOM render()            runtimeState + resultCache         │
+│         │                          │                           │
+└─────────┼──────────────────────────┼───────────────────────────┘
+          │                          │
+          ▼                          ▼
+┌───────────────────────────────────────────────────────────────┐
+│                  FastAPI (uvicorn, localhost:8000)              │
+│                                                               │
+│  api.py ─── tasks.py ─── services.py ─── registry.py          │
+│     │           │            │                                  │
+│     │      task orchestrate   │                                  │
+│     │           │            │                                  │
+│     ▼           ▼            ▼                                  │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐             │
+│  │ DNSMOS  │ │  NISQA  │ │AudioBox │ │Analysis │             │
+│  └─────────┘ └─────────┘ └─────────┘ └─────────┘             │
+│                                                               │
+│  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐          │
+│  │preprocessor │  │history_store │  │settings_store│          │
+│  └─────────────┘  └──────────────┘  └──────────────┘          │
+└───────────────────────────────────────────────────────────────┘
+```
+
+<details>
+<summary><strong>Repository layout</strong></summary>
+
+```
+audioqas/
+  web/           FastAPI app, runtime logic, static frontend
+    api.py       REST endpoints
+    tasks.py     Task orchestration (single / compare / batch)
+    services.py  Model dispatch
+    registry.py  Model + signal metric registry
+    runtime.py   Runtime state management
+    run_local.py Local server entry point
+    static/      Frontend assets (HTML + JS + CSS)
+    history_store.py   Local JSON-backed history
+    settings_store.py  Local JSON-backed settings
+  core/
+    preprocessor.py    Audio preprocessing pipeline
+  models/
+    dnsmos.py          DNSMOS model wrapper
+    nisqa.py           NISQA model wrapper
+    audiobox_aesthetics.py  AudioBox Aesthetics wrapper
+    analysis.py        Signal analysis module
+
+design/              Design token reference asset
+docs/                Product spec, acceptance checklist, design docs
+tests/
+  python/            pytest suite
+  web/               jsdom user-flow tests
+  e2e/               Playwright browser tests
+  fixtures/          Shared test WAV files
+```
+
+</details>
+
+---
+
+## API Surface
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/` | Web UI |
+| `GET` | `/api/health` | Health check |
+| `GET` | `/api/bootstrap` | Initial page config |
+| `GET` | `/api/navigation` | Navigation structure |
+| `GET` | `/api/models` | Available model list |
+| `GET` | `/api/signal-metrics` | Signal metric definitions |
+| `GET` | `/api/history` | Task history list |
+| `GET` | `/api/history/{id}` | Single history item |
+| `GET` | `/api/settings` | Current settings |
+| `POST` | `/api/evaluate/single` | Single-file evaluation |
+| `POST` | `/api/evaluate/compare` | Multi-group compare |
+| `POST` | `/api/evaluate/batch` | Batch evaluation |
+| `POST` | `/api/evaluate/upload` | File upload (single) |
+| `POST` | `/api/evaluate/upload-batch` | File upload (batch) |
+| `POST` | `/api/evaluate/compare-upload` | File upload (compare) |
+| `POST` | `/api/settings` | Update settings |
+
+---
+
+## Run Tests
+
+AudioQAS uses:
+
+- `pytest` for Python API, service, preprocessing, and runtime tests
+- `jsdom` for web preview user-flow tests
+- `Playwright` for browser E2E tests
+
+```bash
+# Python test suite
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q
+
+# jsdom user-flow tests
+npm run test:web-preview
+
+# Playwright browser tests
+npm run test:e2e
+```
+
+<details>
+<summary><strong>Test details</strong></summary>
+
+- **pytest** covers: web API contracts, task orchestration, model services, schemas, settings/history store, preprocessing, logging, and DOM-level UI assertions
+- **jsdom** covers: single-file upload/render, compare flow, history states, settings persistence, progress lifecycle, export filename, XHR/fetch fallback
+- **Playwright** covers: real browser upload, page navigation, DOM snapshot verification — runs against static file server, no full backend dependency
+
+</details>
+
+---
+
+## Runtime Artifacts
+
+Local runtime writes to the repository root (all safe to delete):
+
+| Path | Content |
+|------|---------|
+| `.tmp/preprocessed` | Audio preprocessing intermediates |
+| `.tmp/web_uploads` | Uploaded file cache |
+| `.tmp/web_state` | History + settings JSON |
+| `.tmp/log/` | `audioqas.log` + `audioqas.error.log` |
+
+Deleting `.tmp/web_state` clears local history and settings.
+
+<details>
+<summary><strong>Log configuration</strong></summary>
+
+Logs are configured at startup via environment variables:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `AUDIOQAS_LOG_LEVEL` | `DEBUG` | Log level |
+| `AUDIOQAS_LOG_DIR` | `.tmp/log/` | Log directory |
+| `AUDIOQAS_LOG_MAX_MB` | `20` | Max single file size before rotation |
+| `AUDIOQAS_LOG_BACKUP_COUNT` | `3` | Number of rotated backups |
+
+Log format includes: timestamp, thread ID, level, `request_id`, scene, event, file:line, module tag.
+
+Each business request (single / compare / batch / settings) gets one `request_id` — no per-file splitting.
+
+</details>
+
+---
+
+## Scope & Limits
+
+Current scope is intentional, not aspirational:
+
+- **PC browser only** — no mobile layout, no responsive touch flow
+- **Local development workflow** — no production packaging, no CI/CD deployment
+- **4 pages only** — 纯人声评测, 综合音频分析, 历史, 设置
+- **No batch product flow** — single file + compare cover core needs; batch API exists but has no dedicated UI
+
+---
+
+## License
+
+MIT
+
+---
+
+<div align="center">
+
+**Built for audio engineers who need real metrics, not just numbers**
+
+[Report Bug](https://github.com/Davidwu123/AudioQAS/issues) · [Request Feature](https://github.com/Davidwu123/AudioQAS/issues)
+
+</div>

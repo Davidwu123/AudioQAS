@@ -15,9 +15,9 @@ from audioqas.web.runtime import (
 from audioqas.web.schemas import EvalDomain
 
 
-ROOT = Path(__file__).resolve().parents[1]
-REAL_FILE_1 = ROOT / "tests" / "files" / "test1.wav"
-REAL_FILE_2 = ROOT / "tests" / "files" / "test2.wav"
+ROOT = Path(__file__).resolve().parents[2]
+REAL_FILE_1 = ROOT / "tests" / "fixtures" / "test1.wav"
+REAL_FILE_2 = ROOT / "tests" / "fixtures" / "test2.wav"
 
 
 def _with_real_preprocess_dir(tmp_path, monkeypatch) -> None:
@@ -175,7 +175,7 @@ def test_root_serves_web_preview_html():
 
 def test_design_static_assets_are_mounted():
     client = make_client()
-    response = client.get("/design/web-preview-data.js")
+    response = client.get("/static-preview/web-preview-data.js")
     assert response.status_code == 200
     assert "AudioQASWebPreview" in response.text
 
@@ -833,6 +833,91 @@ def test_upload_preprocess_disabled_returns_400(tmp_path, monkeypatch):
     assert payload["code"] == "mono_convert_disabled"
     assert payload["stage"] == "preprocess"
     assert "disabled" in payload["message"]
+
+
+def test_upload_video_without_ffmpeg_returns_400(tmp_path, monkeypatch):
+    from audioqas.web.settings_store import InMemorySettingsStore
+    import audioqas.core.preprocessor as preprocessor
+    import shutil
+
+    _with_real_preprocess_dir(tmp_path, monkeypatch)
+    monkeypatch.setattr(shutil, "which", lambda name: None if name == "ffmpeg" else shutil.which(name))
+    settings_store = InMemorySettingsStore({"preprocess_extract_audio": True})
+    client = TestClient(create_app(settings_store=settings_store))
+
+    response = client.post(
+        "/api/evaluate/upload",
+        data={"domain": EvalDomain.SPEECH.value, "model_key": "dnsmos", "include_signal": "false"},
+        files={"file": ("sample.mp4", b"fake-video", "video/mp4")},
+    )
+
+    assert response.status_code == 400
+    payload = response.json()["detail"]
+    assert payload["code"] == "ffmpeg_missing"
+    assert payload["stage"] == "preprocess"
+    assert "ffmpeg" in payload["message"].lower()
+
+
+def test_upload_empty_file_returns_400(tmp_path, monkeypatch):
+    _with_real_preprocess_dir(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/evaluate/upload",
+        data={"domain": EvalDomain.SPEECH.value, "model_key": "dnsmos", "include_signal": "false"},
+        files={"file": ("empty.wav", b"", "audio/wav")},
+    )
+
+    assert response.status_code == 400
+    payload = response.json()["detail"]
+    assert payload["code"] == "empty_upload"
+    assert payload["stage"] == "upload"
+
+
+def test_upload_invalid_audio_returns_400(tmp_path, monkeypatch):
+    _with_real_preprocess_dir(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/evaluate/upload",
+        data={"domain": EvalDomain.SPEECH.value, "model_key": "dnsmos", "include_signal": "false"},
+        files={"file": ("broken.wav", b"not-a-real-wave-file", "audio/wav")},
+    )
+
+    assert response.status_code == 400
+    payload = response.json()["detail"]
+    assert payload["code"] == "invalid_audio_file"
+    assert payload["stage"] == "preprocess"
+
+
+def test_upload_header_only_wav_returns_400(tmp_path, monkeypatch):
+    _with_real_preprocess_dir(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+    header_only_wav = (
+        b"RIFF"
+        + (36).to_bytes(4, "little")
+        + b"WAVEfmt "
+        + (16).to_bytes(4, "little")
+        + (1).to_bytes(2, "little")
+        + (2).to_bytes(2, "little")
+        + (48000).to_bytes(4, "little")
+        + (48000 * 2 * 2).to_bytes(4, "little")
+        + (4).to_bytes(2, "little")
+        + (16).to_bytes(2, "little")
+        + b"data"
+        + (0).to_bytes(4, "little")
+    )
+
+    response = client.post(
+        "/api/evaluate/upload",
+        data={"domain": EvalDomain.SPEECH.value, "model_key": "dnsmos", "include_signal": "false"},
+        files={"file": ("header_only.wav", header_only_wav, "audio/wav")},
+    )
+
+    assert response.status_code == 400
+    payload = response.json()["detail"]
+    assert payload["code"] == "empty_audio"
+    assert payload["stage"] == "preprocess"
 
 
 def test_supplied_request_id_is_used_in_logs(tmp_path):

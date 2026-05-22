@@ -2,17 +2,17 @@
 
 > 版本: 1.1.0
 > 日期: 2026-05-18
-> Token 文件: `design/design-tokens.json`
+> Token 参考资产: `design/design-tokens.json`
 > 当前网页预览:
-> - `design/web-preview.html`
-> - `design/web-preview-data.js`
-> - `design/web-preview-app.js`
+> - `audioqas/web/static/web-preview.html`
+> - `audioqas/web/static/web-preview-data.js`
+> - `audioqas/web/static/web-preview-app.js`
 
 ---
 
 ## 1. 设计目标
 
-当前设计系统服务于 AudioQAS 网页端预览，而不是旧桌面 App 的窗口样式说明。
+当前设计系统服务于 AudioQAS 网页端预览。
 
 设计目标：
 
@@ -206,15 +206,20 @@
 
 设计与交互规则变更时，应优先更新数据层与测试，而不是把业务规则塞回 HTML。
 
+说明：
+
+- 当前详细设计规则仍保留在本文件
+- 对外公开入口文档为 `docs/design-system.md`
+
 ---
 
 ## 8. 测试要求
 
 与设计/展示直接相关的变更，至少同步更新以下测试之一：
 
-- `tests/web_preview_data.test.mjs`
-- `tests/test_web_preview_data.py`
-- `tests/test_web_preview_app.py`
+- `tests/web/web_preview_data.test.mjs`
+- `tests/python/test_web_preview_data.py`
+- `tests/python/test_web_preview_app.py`
 
 推荐验证命令：
 
@@ -225,13 +230,8 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q
 
 ---
 
-## 9. 旧说明删除原则
+## 9. 文档说明
 
-以下内容不再是当前设计文档的主线：
-
-- 桌面窗口标题栏布局说明
-- 旧 PySide6 QSS 模板说明
-- 桌面 App 产品定位叙事
-
-后续如果仍需保留旧桌面实现，只应作为历史实现背景存在，不应继续主导需求和设计文档。
-
+- 本文档只描述当前网页端设计规则
+- 不承担历史平台迁移说明
+- 如果后续继续整理公共文档结构，应优先把详细规则并入 `docs/` 体系

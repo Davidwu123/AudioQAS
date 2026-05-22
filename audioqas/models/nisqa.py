@@ -14,6 +14,7 @@ from audioqas.core.preprocessor import (
     VIDEO_EXTS,
     _ensure_preprocess_dir,
     _extract_audio,
+    ensure_non_empty_audio,
     _to_mono,
     _resample,
     build_preprocessed_name,
@@ -108,6 +109,7 @@ def _preprocess_for_nisqa(audio_path: str) -> tuple[str, dict]:
         pipeline_steps.append("extract_audio")
 
     audio, orig_sr = sf.read(audio_path)
+    ensure_non_empty_audio(audio)
     orig_channels = 1 if audio.ndim == 1 else audio.shape[1]
     duration = len(audio) / orig_sr
     need_resample = orig_sr != NISQA_TARGET_SR

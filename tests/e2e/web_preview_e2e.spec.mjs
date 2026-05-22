@@ -125,7 +125,7 @@ async function setupPage(page, apiOverrides = {}) {
     });
   }
 
-  await page.goto("/design/web-preview.html");
+  await page.goto("/static-preview/web-preview.html");
   await page.waitForLoadState("networkidle");
 }
 
@@ -149,7 +149,7 @@ test.describe("web-preview E2E", () => {
     const emptyScene = page.locator('[data-page="eval"] [data-scene="empty"].active');
     await expect(emptyScene).toBeVisible();
 
-    const wavFile = path.resolve(repoRoot, "tests/files/test1.wav");
+    const wavFile = path.resolve(repoRoot, "tests/fixtures/test1.wav");
 
     const uploadCard = page.locator('[data-single-upload-card="eval"]');
     await uploadCard.click();
@@ -213,7 +213,7 @@ test.describe("web-preview E2E", () => {
 
     await page.locator('[data-scene-trigger="eval:compare"]').first().click();
 
-    const wavA = path.resolve(repoRoot, "tests/files/test1.wav");
+    const wavA = path.resolve(repoRoot, "tests/fixtures/test1.wav");
 
     await page.locator('[data-compare-upload-group="eval-A"]').click();
     await page.locator("input[type='file']").last().setInputFiles(wavA);
@@ -232,8 +232,8 @@ test.describe("web-preview E2E", () => {
 
     await page.locator('[data-scene-trigger="eval:compare"]').first().click();
 
-    const wavA = path.resolve(repoRoot, "tests/files/test1.wav");
-    const wavB = path.resolve(repoRoot, "tests/files/test2.wav");
+    const wavA = path.resolve(repoRoot, "tests/fixtures/test1.wav");
+    const wavB = path.resolve(repoRoot, "tests/fixtures/test2.wav");
 
     await page.locator('[data-compare-upload-group="eval-A"]').click();
     await page.locator("input[type='file']").last().setInputFiles(wavA);
@@ -252,8 +252,8 @@ test.describe("web-preview E2E", () => {
 
     await page.locator('[data-scene-trigger="eval:compare"]').first().click();
 
-    const wavA = path.resolve(repoRoot, "tests/files/test1.wav");
-    const wavB = path.resolve(repoRoot, "tests/files/test2.wav");
+    const wavA = path.resolve(repoRoot, "tests/fixtures/test1.wav");
+    const wavB = path.resolve(repoRoot, "tests/fixtures/test2.wav");
 
     await page.locator('[data-compare-upload-group="eval-A"]').click();
     await page.locator("input[type='file']").last().setInputFiles(wavA);
@@ -279,8 +279,8 @@ test.describe("web-preview E2E", () => {
 
     await page.locator('[data-scene-trigger="eval:compare"]').first().click();
 
-    const wavA = path.resolve(repoRoot, "tests/files/test1.wav");
-    const wavB = path.resolve(repoRoot, "tests/files/test2.wav");
+    const wavA = path.resolve(repoRoot, "tests/fixtures/test1.wav");
+    const wavB = path.resolve(repoRoot, "tests/fixtures/test2.wav");
 
     await page.locator('[data-compare-upload-group="eval-A"]').click();
     await page.locator("input[type='file']").last().setInputFiles(wavA);
@@ -317,7 +317,7 @@ test.describe("web-preview E2E", () => {
   test("reset clears result and returns to empty state", async ({ page }) => {
     await setupPage(page, { "/api/evaluate/upload": dnsmosSinglePayload() });
 
-    const wavFile = path.resolve(repoRoot, "tests/files/test1.wav");
+    const wavFile = path.resolve(repoRoot, "tests/fixtures/test1.wav");
 
     const uploadCard = page.locator('[data-single-upload-card="eval"]');
     await uploadCard.click();

@@ -4,7 +4,7 @@
 
 **Goal:** Make the web preview single-file flow show real API-backed results for both `纯人声评测` and `综合音频分析` without changing the current product structure.
 
-**Architecture:** Keep the existing `web-preview` shell and route all single-file rendering through a new front-end display-model mapping layer. `design/web-preview-data.js` owns reusable mapping/formatting helpers, while `design/web-preview-app.js` owns runtime state, staged pseudo-progress, and DOM updates based on the mapped single-file view model.
+**Architecture:** Keep the existing `web-preview` shell and route all single-file rendering through a new front-end display-model mapping layer. `audioqas/web/static/web-preview-data.js` owns reusable mapping/formatting helpers, while `audioqas/web/static/web-preview-app.js` owns runtime state, staged pseudo-progress, and DOM updates based on the mapped single-file view model.
 
 **Tech Stack:** Static HTML, browser-side JavaScript, FastAPI upload endpoint, pytest, Node test runner
 
@@ -13,14 +13,14 @@
 ### Task 1: Add failing tests for single-file display mapping
 
 **Files:**
-- Modify: `tests/web_preview_data.test.mjs`
-- Modify: `tests/test_web_preview_app.py`
-- Reference: `design/web-preview-data.js`
-- Reference: `design/web-preview-app.js`
+- Modify: `tests/web/web_preview_data.test.mjs`
+- Modify: `tests/python/test_web_preview_app.py`
+- Reference: `audioqas/web/static/web-preview-data.js`
+- Reference: `audioqas/web/static/web-preview-app.js`
 
 - [ ] **Step 1: Write the failing Node tests for real single-file display models**
 
-Add tests to `tests/web_preview_data.test.mjs` that assert a new mapping API exists and supports:
+Add tests to `tests/web/web_preview_data.test.mjs` that assert a new mapping API exists and supports:
 
 ```js
 test("speech single-file mapping keeps DNSMOS primary dimensions", () => {
@@ -89,7 +89,7 @@ test("speech single-file mapping keeps full NISQA dimensions", () => {
 
 - [ ] **Step 2: Write the failing app-structure test for single-file runtime state**
 
-Add a test to `tests/test_web_preview_app.py` asserting the app source contains the new per-page single runtime state and no longer relies only on `evalFile`/`analysisFile`:
+Add a test to `tests/python/test_web_preview_app.py` asserting the app source contains the new per-page single runtime state and no longer relies only on `evalFile`/`analysisFile`:
 
 ```python
 def test_web_preview_app_tracks_single_file_runtime_state():
@@ -105,7 +105,7 @@ def test_web_preview_app_tracks_single_file_runtime_state():
 Run:
 
 ```bash
-QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_web_preview_app.py -q
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/python/test_web_preview_app.py -q
 npm run test:web-preview
 ```
 
@@ -116,19 +116,19 @@ Expected:
 - [ ] **Step 4: Commit**
 
 ```bash
-git add tests/test_web_preview_app.py tests/web_preview_data.test.mjs
+git add tests/python/test_web_preview_app.py tests/web/web_preview_data.test.mjs
 git commit -m "test: define single-file real result view model expectations"
 ```
 
 ### Task 2: Implement single-file display-model mapping helpers
 
 **Files:**
-- Modify: `design/web-preview-data.js`
-- Test: `tests/web_preview_data.test.mjs`
+- Modify: `audioqas/web/static/web-preview-data.js`
+- Test: `tests/web/web_preview_data.test.mjs`
 
 - [ ] **Step 1: Add shared formatting helpers for single-file result rendering**
 
-Extend `design/web-preview-data.js` with focused helpers for:
+Extend `audioqas/web/static/web-preview-data.js` with focused helpers for:
 
 ```js
 function formatChannels(channelCount) {
@@ -143,7 +143,7 @@ function buildTraceText(result) {
 
 - [ ] **Step 2: Add the single-file view model builder**
 
-Implement a new pure function in `design/web-preview-data.js`:
+Implement a new pure function in `audioqas/web/static/web-preview-data.js`:
 
 ```js
 function buildSingleFileViewModel(page, payload, fileName) {
@@ -169,7 +169,7 @@ function buildSingleFileViewModel(page, payload, fileName) {
 
 - [ ] **Step 3: Export the new helper from the module**
 
-Update the module return value in `design/web-preview-data.js` so tests and app code can access:
+Update the module return value in `audioqas/web/static/web-preview-data.js` so tests and app code can access:
 
 ```js
 return {
@@ -206,19 +206,19 @@ Expected:
 - [ ] **Step 5: Commit**
 
 ```bash
-git add design/web-preview-data.js tests/web_preview_data.test.mjs
+git add audioqas/web/static/web-preview-data.js tests/web/web_preview_data.test.mjs
 git commit -m "feat: add single-file result display model mapping"
 ```
 
 ### Task 3: Implement single-file runtime state and staged pseudo-progress
 
 **Files:**
-- Modify: `design/web-preview-app.js`
-- Test: `tests/test_web_preview_app.py`
+- Modify: `audioqas/web/static/web-preview-app.js`
+- Test: `tests/python/test_web_preview_app.py`
 
 - [ ] **Step 1: Replace ad hoc file-only runtime state with single-file runtime state**
 
-Update `runtimeState` in `design/web-preview-app.js` to include:
+Update `runtimeState` in `audioqas/web/static/web-preview-app.js` to include:
 
 ```js
 const runtimeState = {
@@ -239,7 +239,7 @@ const runtimeState = {
 
 - [ ] **Step 2: Add explicit staged pseudo-progress helpers**
 
-Add helpers in `design/web-preview-app.js` such as:
+Add helpers in `audioqas/web/static/web-preview-app.js` such as:
 
 ```js
 function setSingleProgress(page, label, width) {
@@ -287,7 +287,7 @@ setSingleProgress(page, "失败", "0%");
 Run:
 
 ```bash
-QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_web_preview_app.py -q
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/python/test_web_preview_app.py -q
 ```
 
 Expected:
@@ -296,16 +296,16 @@ Expected:
 - [ ] **Step 5: Commit**
 
 ```bash
-git add design/web-preview-app.js tests/test_web_preview_app.py
+git add audioqas/web/static/web-preview-app.js tests/python/test_web_preview_app.py
 git commit -m "feat: add single-file runtime state and staged progress"
 ```
 
 ### Task 4: Make single-file DOM rendering consume the new mapped view model
 
 **Files:**
-- Modify: `design/web-preview-app.js`
-- Modify: `design/web-preview-data.js`
-- Test: `tests/web_preview_data.test.mjs`
+- Modify: `audioqas/web/static/web-preview-app.js`
+- Modify: `audioqas/web/static/web-preview-data.js`
+- Test: `tests/web/web_preview_data.test.mjs`
 
 - [ ] **Step 1: Switch `applySingleEvaluation(...)` to use `buildSingleFileViewModel(...)`**
 
@@ -384,7 +384,7 @@ Run:
 
 ```bash
 npm run test:web-preview
-QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_web_preview_app.py tests/test_web_preview_data.py -q
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/python/test_web_preview_app.py tests/python/test_web_preview_data.py -q
 ```
 
 Expected:
@@ -393,18 +393,18 @@ Expected:
 - [ ] **Step 6: Commit**
 
 ```bash
-git add design/web-preview-app.js design/web-preview-data.js tests/web_preview_data.test.mjs tests/test_web_preview_data.py tests/test_web_preview_app.py
+git add audioqas/web/static/web-preview-app.js audioqas/web/static/web-preview-data.js tests/web/web_preview_data.test.mjs tests/python/test_web_preview_data.py tests/python/test_web_preview_app.py
 git commit -m "feat: render single-file real results from mapped view models"
 ```
 
 ### Task 5: Final verification for the single-file real-results slice
 
 **Files:**
-- Verify: `design/web-preview-data.js`
-- Verify: `design/web-preview-app.js`
-- Verify: `tests/web_preview_data.test.mjs`
-- Verify: `tests/test_web_preview_app.py`
-- Verify: `tests/test_web_api.py`
+- Verify: `audioqas/web/static/web-preview-data.js`
+- Verify: `audioqas/web/static/web-preview-app.js`
+- Verify: `tests/web/web_preview_data.test.mjs`
+- Verify: `tests/python/test_web_preview_app.py`
+- Verify: `tests/python/test_web_api.py`
 
 - [ ] **Step 1: Run the complete automated verification**
 
@@ -445,6 +445,6 @@ Check in the browser:
 - [ ] **Step 4: Commit**
 
 ```bash
-git add design/web-preview-data.js design/web-preview-app.js tests/web_preview_data.test.mjs tests/test_web_preview_app.py
+git add audioqas/web/static/web-preview-data.js audioqas/web/static/web-preview-app.js tests/web/web_preview_data.test.mjs tests/python/test_web_preview_app.py
 git commit -m "feat: complete single-file real results flow"
 ```

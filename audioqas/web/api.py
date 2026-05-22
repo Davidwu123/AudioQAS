@@ -10,6 +10,7 @@ from fastapi import Header
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+import soundfile as sf
 
 from audioqas.logging import get_logger, log_context, set_event
 from audioqas.web.runtime import CompareInputGroup
@@ -66,6 +67,9 @@ PREPROCESS_ERROR_MESSAGES = {
     "mono_convert_disabled": "Automatic mono conversion is disabled for the current settings.",
     "resample_disabled": "Automatic resampling is disabled for the current settings.",
     "video_extract_disabled": "Automatic audio extraction from video is disabled for the current settings.",
+    "ffmpeg_missing": "ffmpeg is required for audio extraction from video files. Install ffmpeg and retry.",
+    "empty_audio": "The uploaded file contains no audio samples.",
+    "invalid_audio_file": "The uploaded file could not be decoded as a supported audio/video file.",
 }
 
 
@@ -199,11 +203,11 @@ def create_app(
     settings_store = settings_store or default_settings_store()
     preview_service = service or WebPreviewService(history_store=history_store, settings_store=settings_store)
     task_service = evaluation_service or EvaluationService()
-    design_dir = Path(__file__).resolve().parents[2] / "design"
+    static_dir = Path(__file__).resolve().parent / "static"
     upload_dir = Path(__file__).resolve().parents[2] / ".tmp" / "web_uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    app.mount("/design", StaticFiles(directory=design_dir), name="design")
+    app.mount("/static-preview", StaticFiles(directory=static_dir), name="static-preview")
 
     def _configure_task_service() -> None:
         if hasattr(task_service, "configure_settings"):
@@ -227,7 +231,7 @@ def create_app(
 
     @app.get("/")
     def index() -> FileResponse:
-        return FileResponse(design_dir / "web-preview.html")
+        return FileResponse(static_dir / "web-preview.html")
 
     @app.get("/api/health")
     def health(x_request_id: str | None = Header(None)) -> dict:
@@ -386,6 +390,17 @@ def create_app(
                             file.filename,
                         )
                     raise HTTPException(status_code=413, detail=f"File too large (max {MAX_UPLOAD_SIZE // (1024*1024)}MB)")
+                if len(content) == 0:
+                    with set_event("request_failed"):
+                        logger.warning("request_failed reason=empty_upload filename=%s", file.filename)
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "code": "empty_upload",
+                            "message": "The uploaded file is empty.",
+                            "stage": "upload",
+                        },
+                    )
                 target.write_bytes(content)
                 with set_event("upload_saved"):
                     logger.info("upload_saved file=%s size=%s", target, len(content))
@@ -404,6 +419,17 @@ def create_app(
                 raise
             except ValueError as exc:
                 _raise_preprocess_http_error(exc)
+            except sf.LibsndfileError:
+                with set_event("request_failed"):
+                    logger.warning("request_failed path=/api/evaluate/upload reason=invalid_audio_file")
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "invalid_audio_file",
+                        "message": PREPROCESS_ERROR_MESSAGES["invalid_audio_file"],
+                        "stage": "preprocess",
+                    },
+                )
             except Exception:
                 with set_event("request_failed"):
                     logger.exception("request_failed path=/api/evaluate/upload reason=unexpected_error")
@@ -435,6 +461,15 @@ def create_app(
                     content = await upload.read()
                     if len(content) > MAX_UPLOAD_SIZE:
                         raise HTTPException(status_code=413, detail=f"File too large (max {MAX_UPLOAD_SIZE // (1024*1024)}MB)")
+                    if len(content) == 0:
+                        raise HTTPException(
+                            status_code=400,
+                            detail={
+                                "code": "empty_upload",
+                                "message": "One uploaded file is empty.",
+                                "stage": "upload",
+                            },
+                        )
                     target.write_bytes(content)
                     stored_paths.append(str(target))
                     with set_event("upload_saved"):
@@ -454,6 +489,17 @@ def create_app(
                 raise
             except ValueError as exc:
                 _raise_preprocess_http_error(exc)
+            except sf.LibsndfileError:
+                with set_event("request_failed"):
+                    logger.warning("request_failed path=/api/evaluate/upload-batch reason=invalid_audio_file")
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "invalid_audio_file",
+                        "message": PREPROCESS_ERROR_MESSAGES["invalid_audio_file"],
+                        "stage": "preprocess",
+                    },
+                )
             except Exception:
                 with set_event("request_failed"):
                     logger.exception("request_failed path=/api/evaluate/upload-batch reason=unexpected_error")
@@ -496,6 +542,15 @@ def create_app(
                     content = await upload.read()
                     if len(content) > MAX_UPLOAD_SIZE:
                         raise HTTPException(status_code=413, detail=f"File too large (max {MAX_UPLOAD_SIZE // (1024*1024)}MB)")
+                    if len(content) == 0:
+                        raise HTTPException(
+                            status_code=400,
+                            detail={
+                                "code": "empty_upload",
+                                "message": f"Uploaded file for group {key} is empty.",
+                                "stage": "upload",
+                            },
+                        )
                     target.write_bytes(content)
                     groups.append(CompareInputGroup(key=key, file_path=str(target)))
                     with set_event("upload_saved"):
@@ -516,6 +571,17 @@ def create_app(
                 raise
             except ValueError as exc:
                 _raise_preprocess_http_error(exc)
+            except sf.LibsndfileError:
+                with set_event("request_failed"):
+                    logger.warning("request_failed path=/api/evaluate/compare-upload reason=invalid_audio_file")
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "invalid_audio_file",
+                        "message": PREPROCESS_ERROR_MESSAGES["invalid_audio_file"],
+                        "stage": "preprocess",
+                    },
+                )
             except Exception:
                 with set_event("request_failed"):
                     logger.exception("request_failed path=/api/evaluate/compare-upload reason=unexpected_error")

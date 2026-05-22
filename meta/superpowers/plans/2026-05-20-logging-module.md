@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a unified logging module that writes rotating log files under `log/`, supports startup log-level configuration, propagates `request_id` across request chains, and instruments the first-stage web execution path for branch-aware runtime diagnosis.
+**Goal:** Build a unified logging module that writes rotating log files under `.tmp/log/`, supports startup log-level configuration, propagates `request_id` across request chains, and instruments the first-stage web execution path for branch-aware runtime diagnosis.
 
 **Architecture:** Add a single logging package under `audioqas/logging/` to own formatter, rotating handlers, context propagation, and logger creation. Wire startup initialization from `audioqas/web/run_local.py`, then instrument the first-stage web path (`api -> tasks -> preprocessor`) with structured events so a single `request_id` can reconstruct request flow and branch decisions.
 
@@ -13,7 +13,7 @@
 ### Task 1: Add failing tests for logging infrastructure
 
 **Files:**
-- Create: `tests/test_logging.py`
+- Create: `tests/python/test_logging.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -61,7 +61,7 @@ def test_error_log_receives_error_entries(tmp_path):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_logging.py -q`
+Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/python/test_logging.py -q`
 Expected: FAIL because `audioqas.logging` module does not exist yet
 
 ### Task 2: Implement unified logging runtime
@@ -194,14 +194,14 @@ def main() -> None:
 
 - [ ] **Step 2: Run test to verify it passes**
 
-Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_logging.py -q`
+Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/python/test_logging.py -q`
 Expected: PASS
 
 ### Task 3: Add failing tests for API/task request_id flow
 
 **Files:**
-- Modify: `tests/test_web_api.py`
-- Modify: `tests/test_web_tasks.py`
+- Modify: `tests/python/test_web_api.py`
+- Modify: `tests/python/test_web_tasks.py`
 
 - [ ] **Step 1: Write failing tests**
 
@@ -235,7 +235,7 @@ def test_evaluate_single_logs_task_events(tmp_path):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_web_api.py tests/test_web_tasks.py -q`
+Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/python/test_web_api.py tests/python/test_web_tasks.py -q`
 Expected: FAIL because request/task logs are not emitted yet
 
 ### Task 4: Instrument API and task orchestration
@@ -281,13 +281,13 @@ Instrument:
 
 - [ ] **Step 3: Run tests to verify they pass**
 
-Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_web_api.py tests/test_web_tasks.py -q`
+Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/python/test_web_api.py tests/python/test_web_tasks.py -q`
 Expected: PASS
 
 ### Task 5: Add failing tests for preprocessing branch logs
 
 **Files:**
-- Modify: `tests/test_models.py`
+- Modify: `tests/python/test_models.py`
 
 - [ ] **Step 1: Write failing tests**
 
@@ -308,7 +308,7 @@ def test_dnsmos_preprocess_logs_passthrough_branch(tmp_path, monkeypatch):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_models.py -q`
+Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/python/test_models.py -q`
 Expected: FAIL because preprocessing branch logs do not exist yet
 
 ### Task 6: Instrument preprocessing decisions
@@ -331,7 +331,7 @@ Add logs for:
 
 - [ ] **Step 2: Run targeted model tests**
 
-Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_models.py -q`
+Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/python/test_models.py -q`
 Expected: PASS
 
 ### Task 7: Verify full first-stage integration

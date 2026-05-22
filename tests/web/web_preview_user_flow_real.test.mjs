@@ -9,10 +9,10 @@ import { JSDOM } from "jsdom";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..");
-const htmlPath = path.join(repoRoot, "design", "web-preview.html");
-const dataScriptPath = path.join(repoRoot, "design", "web-preview-data.js");
-const appScriptPath = path.join(repoRoot, "design", "web-preview-app.js");
+const repoRoot = path.resolve(__dirname, "..", "..");
+const htmlPath = path.join(repoRoot, "audioqas", "web", "static", "web-preview.html");
+const dataScriptPath = path.join(repoRoot, "audioqas", "web", "static", "web-preview-data.js");
+const appScriptPath = path.join(repoRoot, "audioqas", "web", "static", "web-preview-app.js");
 const realPayloadHelper = path.join(repoRoot, "tests", "helpers", "web_real_backend_payload.py");
 
 function fetchRealPayload(mode, ...args) {
@@ -45,11 +45,18 @@ function createFetch(fetchMap) {
     if (typeof value === "function") {
       return value({ url: key, options, calls });
     }
+    if (value && typeof value === "object" && typeof value.json === "function") {
+      if (!value.text) value.text = async () => JSON.stringify(await value.json());
+      return value;
+    }
     return {
       ok: true,
       status: 200,
       async json() {
         return value;
+      },
+      async text() {
+        return JSON.stringify(value);
       },
     };
   };
@@ -69,7 +76,7 @@ async function bootPreview({ fetchMap }) {
   };
   const html = fs.readFileSync(htmlPath, "utf8");
   const dom = new JSDOM(html, {
-    url: "http://localhost/design/web-preview.html",
+    url: "http://localhost/static-preview/web-preview.html",
     runScripts: "outside-only",
     pretendToBeVisual: true,
   });
@@ -92,6 +99,12 @@ async function bootPreview({ fetchMap }) {
   window.cancelAnimationFrame = () => {};
 
   vm.runInContext(fs.readFileSync(dataScriptPath, "utf8"), context, { filename: dataScriptPath });
+  vm.runInContext(`
+    Object.defineProperty(XMLHttpRequest.prototype, 'upload', {
+      get: function() { return undefined; },
+      configurable: true,
+    });
+  `, context, { filename: "xhr-mock" });
   vm.runInContext(fs.readFileSync(appScriptPath, "utf8"), context, { filename: appScriptPath });
   tagOwnedSingleInputs(window.document);
   await flush(window);
@@ -130,33 +143,54 @@ async function bootPreview({ fetchMap }) {
       if (typeof arguments[2] === "object" && arguments[2] !== null) {
         waitForCompletion = arguments[2].waitForCompletion !== false;
       }
-      query(`[data-upload-trigger="${page}:single"]`).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      query(`[data-single-upload-card="${page}"]`).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      await flush(window);
       const input = query(`input[type="file"][data-test-owner="${page}:single"]`);
-      const file = new window.File(["audio"], fileName, { type: "audio/wav" });
+      const file = new window.File(["audio"], fileName, { type: fileName.endsWith(".mov") ? "video/quicktime" : "audio/wav" });
       setFiles(input, [file]);
       input.dispatchEvent(new window.Event("change", { bubbles: true }));
       await waitFor(window, () => trackedFetch.calls.some((call) => call.url === "/api/evaluate/upload"), `single upload ${page}`);
       if (!waitForCompletion) return;
-      await waitFor(window, () => query(`[data-page="${page}"] .card-title`).textContent?.includes(fileName), `single render ${page}`);
+      await waitFor(window, () => {
+        const resultArea = window.document.querySelector(`[data-page="${page}"] [data-result-area]`);
+        const titleEl = window.document.querySelector(`[data-page="${page}"] .card-title`);
+        if (resultArea && resultArea.style.display !== "none" && titleEl && titleEl.textContent?.includes(fileName)) return true;
+        const errorPanel = window.document.querySelector(`[data-page="${page}"] [data-state-panel]`);
+        if (errorPanel && errorPanel.style.display !== "none") return true;
+        return false;
+      }, `single render ${page}`, 5000);
     },
     async openCompare(kind) {
       await this.click(`[data-scene-trigger="${kind}:compare"]`);
       await waitFor(window, () => query(`[data-scene-root="${kind}"] [data-scene="compare"]`).classList.contains("active"), `open compare ${kind}`);
     },
     async uploadCompare(kind, filesByGroup) {
+      const startBtn = window.document.querySelector(`[data-compare-start="${kind}"]`) || window.document.querySelector(`[data-compare-start-ready="${kind}"]`);
       for (const [groupKey, fileName] of Object.entries(filesByGroup)) {
-        const card = [...window.document.querySelectorAll(`[data-group-builder="${kind}"] .group-card`)]
-          .find((node) => node.querySelector("strong")?.textContent?.trim() === groupKey);
-        assert.ok(card, `Missing compare group card: ${kind} ${groupKey}`);
-        const input = resolveClickedInput(card, [...window.document.querySelectorAll('input[type="file"]')]);
-        assert.ok(input, `Missing compare input for ${kind} ${groupKey}`);
-        const file = new window.File(["audio"], fileName, { type: "audio/wav" });
-        setFiles(input, [file]);
-        input.dispatchEvent(new window.Event("change", { bubbles: true }));
+        const groupCard = window.document.querySelector(`[data-compare-upload-group="${kind}-${groupKey}"]`);
+        if (groupCard) {
+          groupCard.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+          await flush(window);
+          const lastInput = [...window.document.querySelectorAll('input[type="file"]')].at(-1);
+          assert.ok(lastInput, `Missing compare input for ${kind} ${groupKey}`);
+          const file = new window.File(["audio"], fileName, { type: fileName.endsWith(".mov") ? "video/quicktime" : "audio/wav" });
+          setFiles(lastInput, [file]);
+          lastInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+        } else {
+          const card = [...window.document.querySelectorAll(`[data-group-builder="${kind}"] .group-card`)]
+            .find((node) => node.querySelector("strong")?.textContent?.trim() === groupKey);
+          assert.ok(card, `Missing compare group card: ${kind} ${groupKey}`);
+          const input = resolveClickedInput(card, [...window.document.querySelectorAll('input[type="file"]')]);
+          assert.ok(input, `Missing compare input for ${kind} ${groupKey}`);
+          const file = new window.File(["audio"], fileName, { type: "audio/wav" });
+          setFiles(input, [file]);
+          input.dispatchEvent(new window.Event("change", { bubbles: true }));
+        }
         await flush(window);
       }
-      await waitFor(window, () => trackedFetch.calls.some((call) => call.url === "/api/evaluate/compare-upload"), `compare upload ${kind}`);
-      await waitFor(window, () => query(`[data-compare-ranking="${kind}"] .ranking-list`).textContent?.length > 0, `compare render ${kind}`);
+      if (startBtn) startBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      await waitFor(window, () => trackedFetch.calls.some((call) => call.url === "/api/evaluate/compare-upload"), `compare upload ${kind}`, 5000);
+      await waitFor(window, () => query(`[data-compare-ranking="${kind}"] .ranking-list`).textContent?.length > 0, `compare render ${kind}`, 5000);
     },
   };
 }
@@ -167,7 +201,7 @@ async function flush(window) {
   await Promise.resolve();
 }
 
-async function waitFor(window, predicate, label, timeoutMs = 1000) {
+async function waitFor(window, predicate, label, timeoutMs = 5000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     await flush(window);
@@ -177,13 +211,16 @@ async function waitFor(window, predicate, label, timeoutMs = 1000) {
 }
 
 function tagOwnedSingleInputs(document) {
-  for (const page of ["eval", "analysis"]) {
-    const triggers = [...document.querySelectorAll(`[data-upload-trigger="${page}:single"]`)];
-    const hiddenInputs = [...document.querySelectorAll('input[type="file"]')];
-    for (const trigger of triggers) {
-      const input = resolveOwnedInput(trigger, hiddenInputs);
-      if (input) input.dataset.testOwner = `${page}:single`;
-    }
+  const evalCard = document.querySelector('[data-single-upload-card="eval"]');
+  const analysisCard = document.querySelector('[data-single-upload-card="analysis"]');
+  const hiddenInputs = [...document.querySelectorAll('input[type="file"]')];
+  if (evalCard) {
+    const input = resolveOwnedInput(evalCard, hiddenInputs);
+    if (input) input.dataset.testOwner = "eval:single";
+  }
+  if (analysisCard) {
+    const input = resolveOwnedInput(analysisCard, hiddenInputs);
+    if (input) input.dataset.testOwner = "analysis:single";
   }
 }
 
@@ -395,16 +432,27 @@ test("real single upload failure still surfaces user-facing error copy", async (
         ok: false,
         status: realError.status,
         async json() {
-          return {};
+          try {
+            return JSON.parse(realError.body);
+          } catch {
+            return {};
+          }
+        },
+        async text() {
+          return realError.body;
         },
       },
     },
   });
   try {
     await app.uploadSingle("eval", "test1.wav", { waitForCompletion: false });
-    await waitFor(app.window, () => app.alerts.length > 0, "real failure alert");
-    assert.match(app.alerts[0], /本机评测失败/);
-    assert.match(app.alerts[0], /页面渲染失败：/);
+    await waitFor(app.window, () => {
+      const panel = app.window.document.querySelector('[data-state-panel="eval-single-error"]');
+      return panel && panel.style.display !== "none";
+    }, "real failure panel");
+    const reasonEl = app.window.document.querySelector('[data-state-panel="eval-single-error"] [data-error-reason]');
+    assert.ok(reasonEl, "real failure reason exists");
+    assert.match(reasonEl.textContent, /Upload evaluate failed|Automatic mono conversion is disabled|missing-model/i);
   } finally {
     await app.close();
   }

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import preview from "../design/web-preview-data.js";
+import preview from "../../audioqas/web/static/web-preview-data.js";
 
 test("shared compare datasets cover all expected models", () => {
   assert.ok(preview.compareData.eval.dnsmos);
@@ -80,16 +80,16 @@ test("detail cells format numeric business values as expected", () => {
 });
 
 test("html references external data/app scripts", () => {
-  const html = fs.readFileSync(new URL("../design/web-preview.html", import.meta.url), "utf8");
-  assert.match(html, /location\.protocol === "file:" \? "\." : "\/design"/);
+  const html = fs.readFileSync(new URL("../../audioqas/web/static/web-preview.html", import.meta.url), "utf8");
+  assert.match(html, /location\.protocol === "file:" \? "\." : "\/static-preview"/);
   assert.match(html, /web-preview-data\.js\?v=/);
   assert.match(html, /web-preview-app\.js\?v=/);
 });
 
 test("html exposes explicit single-file entry without batch upload triggers", () => {
-  const html = fs.readFileSync(new URL("../design/web-preview.html", import.meta.url), "utf8");
-  assert.match(html, /data-upload-trigger="eval:single">单文件测评</);
-  assert.match(html, /data-upload-trigger="analysis:single">单文件分析</);
+  const html = fs.readFileSync(new URL("../../audioqas/web/static/web-preview.html", import.meta.url), "utf8");
+  assert.match(html, /data-scene-trigger="eval:single"[^>]*>单文件测评</);
+  assert.match(html, /data-scene-trigger="analysis:single"[^>]*>单文件分析</);
   assert.match(html, /data-scene-trigger="eval:compare"[^>]*>对比评测</);
   assert.match(html, /data-scene-trigger="analysis:compare"[^>]*>对比分析</);
   assert.doesNotMatch(html, /data-upload-trigger="eval:batch"/);

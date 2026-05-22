@@ -2,6 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  outputDir: ".tmp/test-results",
   timeout: 30000,
   retries: 0,
   use: {
@@ -11,7 +12,7 @@ export default defineConfig({
     baseURL: "http://localhost:8765",
   },
   webServer: {
-    command: "npx serve -l 8765 --no-clipboard",
+    command: "python3 -m http.server 8765",
     port: 8765,
     reuseExistingServer: true,
     timeout: 10000,
