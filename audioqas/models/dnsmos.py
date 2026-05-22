@@ -1,5 +1,4 @@
 import os
-import subprocess
 from datetime import datetime
 
 import numpy as np
@@ -8,9 +7,22 @@ import speechmos.dnsmos
 
 from audioqas.models.base import BaseScorer, ScoreResult, score_to_grade
 from audioqas.core.dimensions import DimensionRegistry
+from audioqas.core.preprocessor import (
+    PREPROCESS_SETTINGS,
+    VIDEO_EXTS,
+    _ensure_preprocess_dir,
+    _extract_audio,
+    ensure_non_empty_audio,
+    _to_mono,
+    _resample,
+    build_preprocessed_name,
+    current_preprocess_settings,
+    format_pipeline_steps,
+)
+from audioqas.logging import get_logger, set_event
 
 TARGET_SR = 16000
-PREPROCESS_DIR = os.path.expanduser("~/Library/Application Support/AudioQAS/preprocessed")
+logger = get_logger(__name__)
 
 DNSMOS_LABELS = {
     "OVRL": "整体听感",
@@ -68,75 +80,70 @@ DNSMOS_METAPHORS = {
 
 DimensionRegistry.register("DNSMOS", DNSMOS_LABELS, DNSMOS_DESCRIPTIONS, DNSMOS_METAPHORS)
 
-VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv"}
-
-
-def _preprocessed_name(original_path: str, target_sr: int, is_video: bool = False) -> str:
-    base = os.path.splitext(os.path.basename(original_path))[0]
-    parts = [base]
-    if is_video:
-        parts.append("from_video")
-    parts.append(f"{target_sr}Hz")
-    parts.append("mono")
-    return "_".join(parts) + ".wav"
-
-
-def _ensure_preprocess_dir() -> str:
-    os.makedirs(PREPROCESS_DIR, exist_ok=True)
-    return PREPROCESS_DIR
-
-
-def _extract_audio(video_path: str) -> str:
-    out_name = _preprocessed_name(video_path, TARGET_SR, is_video=True)
-    out_path = os.path.join(_ensure_preprocess_dir(), out_name)
-    cmd = ["ffmpeg", "-i", video_path, "-vn", "-acodec", "pcm_s16le",
-           "-ar", str(TARGET_SR), "-ac", "1", "-y", out_path]
-    subprocess.run(cmd, check=True, capture_output=True)
-    return out_path
-
-
-def _resample(audio: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
-    if orig_sr == target_sr:
-        return audio
-    duration = len(audio) / orig_sr
-    target_len = int(round(duration * target_sr))
-    indices = np.linspace(0, len(audio) - 1, target_len)
-    return np.interp(indices, np.arange(len(audio)), audio)
-
-
-def _to_mono(audio: np.ndarray) -> np.ndarray:
-    if audio.ndim == 1:
-        return audio
-    return np.mean(audio, axis=1)
-
-
 def _preprocess_audio(audio_path: str) -> tuple[str, dict]:
     ext = os.path.splitext(audio_path)[1].lower()
     is_video = ext in VIDEO_EXTS
+    pipeline_steps = ["source_video" if is_video else "source_audio"]
     if is_video:
-        audio_path = _extract_audio(audio_path)
+        if not PREPROCESS_SETTINGS["extract_audio"]:
+            raise ValueError("video_extract_disabled")
+        out_name = build_preprocessed_name(audio_path, target_sr=TARGET_SR, is_video=True)
+        audio_path = _extract_audio(audio_path, TARGET_SR, out_name)
+        pipeline_steps.append("extract_audio")
 
     audio, orig_sr = sf.read(audio_path)
+    ensure_non_empty_audio(audio)
     orig_channels = 1 if audio.ndim == 1 else audio.shape[1]
     duration = len(audio) / orig_sr
     need_resample = orig_sr != TARGET_SR
     need_mono = audio.ndim > 1
+    with set_event("preprocess_decision"):
+        logger.debug(
+            "preprocess_decision file=%s is_video=%s orig_sr=%s target_sr=%s need_mono=%s need_resample=%s",
+            audio_path,
+            is_video,
+            orig_sr,
+            TARGET_SR,
+            need_mono,
+            need_resample,
+        )
 
     if not need_resample and not need_mono:
+        with set_event("branch_selected"):
+            logger.info("branch=passthrough file=%s sr=%s channels=%s", audio_path, orig_sr, orig_channels)
+        pipeline_steps.append("passthrough")
         return audio_path, {
             "original_sr": orig_sr,
             "original_channels": orig_channels,
             "duration": duration,
-            "preprocessed": False,
-            "preprocessed_path": "",
+            "preprocessed": is_video,
+            "preprocessed_path": audio_path if is_video else "",
+            "pipeline_steps": pipeline_steps,
         }
 
+    if need_mono and not PREPROCESS_SETTINGS["to_mono"]:
+        raise ValueError("mono_convert_disabled")
+    if need_resample and not PREPROCESS_SETTINGS["resample"]:
+        raise ValueError("resample_disabled")
+
+    if need_mono:
+        pipeline_steps.append("to_mono")
     audio = _to_mono(audio)
+    if need_resample:
+        pipeline_steps.append("resample_16k")
     audio = _resample(audio, orig_sr, TARGET_SR)
 
-    out_name = _preprocessed_name(audio_path, TARGET_SR, is_video=is_video)
+    out_name = build_preprocessed_name(audio_path, target_sr=TARGET_SR, is_video=is_video)
     out_path = os.path.join(_ensure_preprocess_dir(), out_name)
     sf.write(out_path, audio, TARGET_SR)
+    with set_event("preprocess_succeeded"):
+        logger.info(
+            "preprocess_succeeded file=%s output=%s sr=%s pipeline=%s",
+            audio_path,
+            out_path,
+            TARGET_SR,
+            format_pipeline_steps(pipeline_steps, "DNSMOS"),
+        )
 
     return out_path, {
         "original_sr": orig_sr,
@@ -144,6 +151,7 @@ def _preprocess_audio(audio_path: str) -> tuple[str, dict]:
         "duration": duration,
         "preprocessed": True,
         "preprocessed_path": out_path,
+        "pipeline_steps": pipeline_steps,
     }
 
 
@@ -199,4 +207,6 @@ class DNSMOSScorer(BaseScorer):
             duration=meta["duration"],
             preprocessed=meta["preprocessed"],
             preprocessed_path=meta["preprocessed_path"],
+            pipeline_steps=meta["pipeline_steps"],
+            preprocess_settings=current_preprocess_settings(),
         )

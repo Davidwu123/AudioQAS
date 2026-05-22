@@ -8,10 +8,7 @@ class DimensionScore(TypedDict):
     description: str
 
 
-class DimensionsDict(TypedDict, total=False):
-    OVRL: DimensionScore
-    SIG: DimensionScore
-    BAK: DimensionScore
+DimensionsDict = dict[str, DimensionScore]
 
 
 class ScoreResult(TypedDict):
@@ -28,6 +25,8 @@ class ScoreResult(TypedDict):
     duration: float
     preprocessed: bool
     preprocessed_path: str  # path to the intermediate file for manual verification
+    pipeline_steps: list[str]
+    preprocess_settings: dict[str, bool]
 
 
 GRADE_MAP = [

@@ -1,0 +1,311 @@
+# TODO
+
+更新时间：2026-05-21
+
+说明：该文件已降级为内部项目推进记录，不作为公开仓库主入口文档。
+
+## 当前已完成
+
+- [x] 网页端一级结构固定为：
+  - `纯人声评测`
+  - `综合音频分析`
+  - `历史`
+  - `设置`
+- [x] 当前网页端运行时前端已拆分为三层：
+  - `audioqas/web/static/web-preview.html`
+  - `audioqas/web/static/web-preview-data.js`
+  - `audioqas/web/static/web-preview-app.js`
+- [x] `详细数据` 已拆成三种视图：
+  - `模型维度`
+  - `信号分析`
+  - `完整表格`
+- [x] `DNSMOS` 与 `NISQA` 已拥有独立对比数据，不再复用一套 compare 示例
+- [x] `基准对比` 已从假切换改为真实联动
+- [x] `预处理追溯` 开关已修正为只隐藏 trace，不再误伤历史摘要
+- [x] `pytest` 已可通过项目内 `.venv` 跑通
+- [x] 当前测试可通过：
+  - `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q`
+  - `npm run test:web-preview`
+- [x] 主文档已切换到网页端预览主线，旧桌面 App 叙事已从主文档中移除
+
+## 当前高优先级
+
+- [ ] 收口开源化遗留记录，避免路径迁移后信息分裂
+  - [x] `meta/superpowers/*` 已迁入内部目录并完成主要路径收口
+  - [x] 旧 `design/web-preview.html`
+  - [x] 旧 `design/web-preview-data.js`
+  - [x] 旧 `design/web-preview-app.js`
+  - [x] 上述 3 个旧运行文件兼容残留已删除，运行时前端统一收敛到 `audioqas/web/static/`
+  - [x] 详细设计文档已迁入 `docs/design-system-detailed.md`
+- [x] `web-preview` 空状态重设计阶段已完成
+  - 单文件空状态改为卡片式上传组件（与对比页 A/B 卡视觉一致）
+  - 对比页上传卡支持文件名/类型/大小实时展示（`renderCompareUploadCards`）
+  - 单文件上传卡支持文件摘要实时展示（`renderSingleUploadCards`）
+  - 对比页 + 按钮上传 2 组后不自动消失，状态保持 empty 直到主动开始
+  - toolbar 按钮改为纯场景切换（`data-scene-trigger`），不直接触发上传
+  - 开始对比按钮改为半透明幽灵风格，避免高饱和度刺眼
+  - 对比模式切换全页联动（`querySelectorAll` 同步所有 mode-root）
+  - 进度条改为真实 XHR byte 追踪（`uploadWithProgress`），不再使用假百分比
+  - 信号分析卡右侧填充真实内容（`renderModelContent`），不再留空白
+  - 导出文件名包含 `request_id`
+  - 已移除冗余元素：
+    - "查看模型说明"按钮
+    - "进入多组对比"按钮
+    - "添加文件"副按钮
+    - 场景说明文字（"适用于通话/口播..."等）
+    - "当前模型下暂无真实结果"弱提示
+  - 信号分析卡边框与模型说明卡边框样式统一（`.active-signal`）
+  - state-panel 间距缩减（min-height 320→180px，padding 32→24px）
+  - 设计文档已同步更新：`meta/superpowers/specs/2026-05-21-empty-state-preview-design.md`
+- [ ] 开始基于 `web-preview` 落真实现，按阶段推进并持续同步 `todo.md`
+- [x] `web-preview` 前端架构清理阶段已完成
+  - 单文件结果区已统一为共享 renderer：
+    - overview
+    - 模型结果
+    - 信号分析
+    - detail table
+  - 对比结果区已统一共享：
+    - summary
+    - ranking
+    - table
+  - `web-preview-app.js` 与 `web-preview-data.js` 边界已进一步明确
+  - `runtimeState` 已切成清晰 slice：
+    - `single`
+    - `compare`
+    - `history`
+    - `settings`
+    - `requests`
+  - 页面动作已抽成 helper/action：
+    - upload
+    - compare
+    - export
+    - reset
+    - settings
+    - history
+  - 真实结果页视觉继续以预览设计为准，NISQA 单文件页当前采用“一行 5 张模型结果卡”的最终版式
+- [x] 第一阶段已完成：抽出可扩展的 Web 骨架层
+  - `audioqas/web/schemas.py`
+  - `audioqas/web/registry.py`
+  - `audioqas/web/services.py`
+  - `tests/python/test_web_service.py`
+- [x] 第二阶段已完成：增加最小可用 Web API 入口
+  - `audioqas/web/api.py`
+  - 提供：
+    - `/`
+    - `/api/health`
+    - `/api/bootstrap`
+    - `/api/navigation`
+    - `/api/models`
+    - `/api/signal-metrics`
+  - 本机模式：
+    - `audioqas/web/run_local.py`
+    - 固定启动 `127.0.0.1:8000`
+  - 测试：
+    - `tests/python/test_web_api.py`
+- [x] 第三阶段第一步已完成：抽出现有模型与信号分析的 service 编排层骨架
+  - `audioqas/web/runtime.py`
+  - `audioqas/web/tasks.py`
+  - `tests/python/test_web_tasks.py`
+- [x] 第三阶段第二步已完成：让 Web API 接入 task service
+  - 新增真实评测入口：
+    - `POST /api/evaluate/single`
+  - 测试：
+    - `tests/python/test_web_api.py`
+- [x] 第三阶段第三步已完成：增加多文件 / 对比任务 service 与 API
+  - 新增接口：
+    - `POST /api/evaluate/batch`
+    - `POST /api/evaluate/compare`
+  - 扩展：
+    - `BatchTaskResult`
+    - `CompareTaskResult`
+    - `CompareInputGroup`
+  - 测试：
+    - `tests/python/test_web_api.py`
+    - `tests/python/test_web_tasks.py`
+- [x] 第四阶段：接入最小可用网页端页面
+  - [x] 前端已开始接本机 API：单文件上传评测
+  - [x] 单文件页已基本收口：
+    - 真实文件摘要
+    - 真实模型结果
+    - 真实信号分析
+    - 独立处理建议
+    - 详细预处理追溯
+    - 单文件详细数据表
+  - [x] 顶层非对比主入口已明确收敛为 `单文件测评`，前端不再暴露多文件上传入口
+  - [x] 前端已开始接本机 API：对比上传评测
+  - [x] 对比页已基本收口：
+    - 运行时推荐结论与排序已开始真实化
+    - 运行时详细追溯已接入详细链路
+    - 运行时表格映射已接入数据层
+    - NISQA 维度完整性已对齐
+  - [x] 历史页真实状态链路已接入：
+    - 历史列表 API
+    - 上传后真实写入
+    - 前端真实列表渲染
+    - 切到历史页自动刷新
+  - [x] 设置页真实状态链路已接入：
+    - `/api/settings`
+    - 默认模型显示随当前状态同步
+    - 预处理追溯与默认对比模式真实持久化
+    - reload 后状态恢复
+  - [x] 文档与验收已对齐：
+    - `README.md`
+    - `docs/web-product-spec.md`
+    - `docs/web-acceptance-checklist.md`
+  - 严格以 `web-preview` 为准，不单独扩出新的“批量结果页”产品流
+- [ ] 继续完善 `web-preview` 的业务数据覆盖范围：
+  - 补更多历史任务类型
+  - 补更多设置项状态组合
+  - 补更多 compare 边界场景
+- [ ] 增加对“WAV 头损坏但 PCM payload 仍在”的容错支持
+  - 当前已确认存在一类 RTC dump 文件：
+    - 文件容器可被 `ffprobe` 识别为 `pcm_s16le`
+    - 文件总长度与码率可推导出真实时长
+    - 但 WAV 头中的 `RIFF/data size` 被写成 0
+    - `soundfile` / `wave` 读取时会得到 `0 frames`
+  - 典型样例：
+    - `audio_dump_playback_mixer_0.wav`
+  - 后续支持方向：
+    - 仅对 `.wav` 且 `fmt/data` 头合法、PCM 元信息完整的受控场景启用 fallback
+    - 根据文件总长度反推真实 PCM 数据区长度
+    - 用 `numpy.frombuffer` 按 `sample_rate / channels / bits_per_sample` 手动恢复样本
+    - 不对任意坏文件做泛化“强行按 PCM 读取”
+  - 目标：
+    - 让此类“头损坏但数据仍在”的 RTC dump 文件可继续进入评测链路
+    - 与 `empty_upload` / `invalid_audio_file` / `empty_audio` 明确区分
+- [ ] 如后续继续前端改动，优先做“新需求/新能力”，不再继续大规模展示层重构
+- [x] 统一运行产物默认路径到工程内
+  - 预处理中间文件默认写入 `.tmp/preprocessed`
+  - 上传缓存默认写入 `.tmp/web_uploads`
+  - Web 状态默认写入 `.tmp/web_state`
+  - 日志固定写入 `.tmp/log/`
+  - 保留环境变量覆盖能力，避免再默认落到用户目录
+- [ ] 把网页端预览当前规则继续沉淀为更稳定的数据契约：
+  - 页面状态
+  - 模型说明结构
+  - 详细数据列定义
+  - 历史摘要结构
+- [ ] 评估是否需要把 `docs/web-product-spec.md` 拆成更短的产品需求 / 交互规则两份文档
+- [~] 增加统一日志模块，支持运行态全链路定位
+  - [x] 新增统一日志配置中心
+    - 日志目录固定为工程根目录 `.tmp/log/`
+    - 主日志文件：`.tmp/log/audioqas.log`
+    - 错误日志文件：`.tmp/log/audioqas.error.log`
+    - 单文件最大 `20MB`
+    - 超过后按 `.1 .2 .3` 递增滚动
+  - [x] 支持启动配置日志级别与日志参数
+    - `AUDIOQAS_LOG_LEVEL`
+    - `AUDIOQAS_LOG_DIR`
+    - `AUDIOQAS_LOG_MAX_MB`
+    - `AUDIOQAS_LOG_BACKUP_COUNT`
+  - [x] 统一日志格式
+    - 包含：
+      - 时间戳
+      - 线程号
+      - 日志级别
+      - `request_id`
+      - `scene`
+      - `event`
+      - 文件名与行号
+      - 模块标签
+  - [x] 统一 `request_id` 规则
+    - 单次 `single` 请求一个 `request_id`
+    - 单次 `compare` 请求一个 `request_id`
+    - 单次 `batch` 请求一个 `request_id`
+    - 单次 `settings` 更新一个 `request_id`
+    - compare / batch 内部多文件不拆分 `request_id`
+  - [~] 第一阶段接入 API / task / model / preprocessor / store 主链路
+    - [x] `audioqas/web/run_local.py`
+    - [x] `audioqas/web/api.py`
+    - [x] `audioqas/web/tasks.py`
+    - [x] `audioqas/web/services.py`
+    - [x] `audioqas/core/preprocessor.py`
+    - [x] `audioqas/models/dnsmos.py`
+    - [x] `audioqas/models/nisqa.py`
+    - [x] `audioqas/models/audiobox_aesthetics.py`
+    - [x] `audioqas/models/analysis.py`
+    - [x] `audioqas/web/history_store.py`
+    - [x] `audioqas/web/settings_store.py`
+  - [x] 日志设计按“链路事件 + 分支事件 + 结果事件 + 异常事件”落地
+    - 不是只做机械入口/出口日志
+    - 重点能判断：
+      - 走到哪个分支
+      - 为什么走这个分支
+      - 分支是否完成
+      - 异常在哪一层中断
+  - [x] 增加日志模块测试
+    - [x] 目录自动创建
+    - [x] 滚动策略生效
+    - [x] `request_id` 透传
+    - [x] 关键日志字段存在
+    - [x] `ERROR` 同时进入主日志与错误日志
+
+## 测试与环境
+
+- [~] 增加更多网页端展示测试：
+  - [x] 设置页状态映射关键联动
+  - [x] compare 边界组别切换与基准重算
+  - [x] 历史页空状态 / 错误状态基础覆盖
+  - [x] 历史页摘要结构更细粒度断言
+  - [x] DOM 级 user-flow 第一阶段覆盖：
+    - 单文件结果渲染
+    - 对比结果渲染
+    - 历史 success / empty / error
+    - 设置 trace / 默认对比模式联动
+    - 单文件失败提示
+    - 单文件阶段性伪进度
+  - [x] 真实文件集成回归第一阶段：
+    - `tests/fixtures/test1.wav`
+    - `tests/fixtures/test2.wav`
+    - 真实上传 API 契约测试
+    - 真实页面对齐测试（speech / analysis / compare）
+  - [x] 真实状态链路第二阶段：
+    - history 真实写入与真实页面回放
+    - settings 真实持久化与 reload 后联动
+- [ ] 评估是否增加 `pytest.ini`，统一处理当前 warning
+- [ ] 下一阶段评估并引入 `Playwright` 作为浏览器级补充测试
+  - 不替换当前 `pytest + node:test + jsdom`
+  - 只补关键真实浏览器场景：
+    - 单文件 `DNSMOS`
+    - 单文件 `NISQA`
+    - 单文件 `AudioBox`
+    - 对比页 `free / base`
+    - 设置持久化
+    - 历史页刷新
+  - 重点用于兜底：
+    - 真实浏览器排版
+    - 预览页与运行态 UI 对齐
+    - 截图基线回归
+  - [x] `playwright.config.mjs` 已配置，webServer 使用本地静态文件服务，输出目录收敛到 `.tmp/test-results`
+  - [x] E2E 测试用例已对接当前真实页面路径
+  - [x] Playwright 输出目录已收敛到 `.tmp/test-results`
+- [ ] 如后续引入真实 Web 实现，补充：
+  - 数据层测试
+  - DOM/交互测试
+  - API 契约测试
+- [x] 当前验证基线已更新为：
+  - `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q`
+    - `127 passed`
+  - `npm run test:web-preview`
+    - `55 pass, 0 fail`
+
+## 文档维护
+
+- [x] 本轮已完成以下文件对齐：
+  - `README.md`
+  - `docs/web-product-spec.md`
+  - `docs/web-acceptance-checklist.md`
+  - `docs/design-system.md`
+  - `docs/design-system-detailed.md`
+- [ ] 保持以下文件持续对齐：
+  - `README.md`
+  - `AGENTS.md`
+  - `docs/web-product-spec.md`
+  - `docs/web-acceptance-checklist.md`
+  - `docs/design-system.md`
+  - `docs/design-system-detailed.md`
+- [ ] 后续任何网页端结构调整，都需要同步更新：
+  - `audioqas/web/static/web-preview.html`
+  - `audioqas/web/static/web-preview-data.js`
+  - `audioqas/web/static/web-preview-app.js`
+  - 对应测试
