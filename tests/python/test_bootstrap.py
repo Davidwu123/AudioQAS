@@ -1,4 +1,5 @@
 from pathlib import Path
+import wave
 
 from audioqas import bootstrap
 
@@ -180,6 +181,15 @@ def test_nisqa_weights_path_exists():
 
 def test_audio_fixture_path_is_under_tmp(tmp_path):
     assert bootstrap.smoke_audio_path(tmp_path) == tmp_path / ".tmp" / "bootstrap_smoke.wav"
+
+
+def test_create_smoke_audio_is_long_enough_for_nisqa(tmp_path):
+    wav_path = bootstrap.create_smoke_audio(tmp_path)
+
+    with wave.open(str(wav_path), "rb") as wav:
+        assert wav.getnchannels() == 1
+        assert wav.getframerate() == 16000
+        assert wav.getnframes() >= 16000 * 3
 
 
 def test_internal_warm_models_runs_all_model_smokes(monkeypatch, tmp_path):

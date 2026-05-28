@@ -324,7 +324,7 @@ def create_smoke_audio(root: Path) -> Path:
         wav.setnchannels(1)
         wav.setsampwidth(2)
         wav.setframerate(sample_rate)
-        for i in range(sample_rate // 10):
+        for i in range(sample_rate * 3):
             value = int(0.1 * 32767 * math.sin(2 * math.pi * 440 * i / sample_rate))
             wav.writeframes(struct.pack("<h", value))
     return wav_path
