@@ -52,10 +52,11 @@ def test_parse_python_version():
     assert bootstrap.parse_python_version("not python") == (0, 0, 0)
 
 
-def test_python_version_requires_three_ten_or_newer():
+def test_python_version_supports_three_ten_through_three_twelve():
     assert bootstrap.python_version_supported((3, 10, 0)) is True
     assert bootstrap.python_version_supported((3, 12, 2)) is True
     assert bootstrap.python_version_supported((3, 7, 9)) is False
+    assert bootstrap.python_version_supported((3, 13, 0)) is False
 
 
 def test_ensure_python_skips_unsupported_python3(monkeypatch):
@@ -75,6 +76,25 @@ def test_ensure_python_skips_unsupported_python3(monkeypatch):
     monkeypatch.setattr(bootstrap, "install_python", lambda: None)
 
     assert bootstrap.ensure_python() == "/opt/homebrew/bin/python3.11"
+
+
+def test_ensure_python_skips_python_three_thirteen(monkeypatch):
+    versions = {
+        "/opt/miniconda3/bin/python3": (3, 13, 1),
+        "/opt/homebrew/bin/python3.12": (3, 12, 10),
+    }
+    paths = {
+        "python3.12": "/opt/homebrew/bin/python3.12",
+        "python3.11": None,
+        "python3.10": None,
+        "python3": "/opt/miniconda3/bin/python3",
+    }
+    monkeypatch.setattr(bootstrap.sys, "version_info", (3, 13, 1))
+    monkeypatch.setattr(bootstrap.shutil, "which", lambda name: paths.get(name))
+    monkeypatch.setattr(bootstrap, "get_python_version", lambda python: versions[python])
+    monkeypatch.setattr(bootstrap, "install_python", lambda: None)
+
+    assert bootstrap.ensure_python() == "/opt/homebrew/bin/python3.12"
 
 
 def test_ensure_ffmpeg_reuses_only_when_ffmpeg_and_ffprobe_exist(monkeypatch, tmp_path):
@@ -256,6 +276,7 @@ def test_docs_reference_one_click_install_and_with_test():
 
     assert "https://github.com/Davidwu123/AudioQAS" in readme
     assert "raw.githubusercontent.com/Davidwu123/AudioQAS/main/scripts/audioqas-install.sh" in readme
+    assert "Python 3.10-3.12" in readme
     assert "./scripts/audioqas-bootstrap --with-test" in contributing
     assert "./scripts/audioqas-bootstrap --with-test" in agents
     assert ".venv/bin/python -m pip install pytest" not in agents

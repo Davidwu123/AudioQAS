@@ -12,6 +12,7 @@ from pathlib import Path
 
 MIN_FFMPEG_VERSION = (6, 0, 0)
 MIN_PYTHON_VERSION = (3, 10, 0)
+MAX_PYTHON_VERSION = (3, 13, 0)
 
 
 @dataclass(frozen=True)
@@ -92,7 +93,7 @@ def parse_python_version(text: str) -> tuple[int, int, int]:
 
 
 def python_version_supported(version: tuple[int, int, int]) -> bool:
-    return version >= MIN_PYTHON_VERSION
+    return MIN_PYTHON_VERSION <= version < MAX_PYTHON_VERSION
 
 
 def repo_ffmpeg_bin(root: Path) -> Path:
@@ -144,7 +145,8 @@ def get_python_version(python_bin: str) -> tuple[int, int, int]:
 
 
 def ensure_python() -> str:
-    if sys.version_info >= (3, 10):
+    current_version = tuple(sys.version_info[:3])
+    if python_version_supported(current_version):
         return sys.executable
     for name in ("python3.12", "python3.11", "python3.10", "python3"):
         candidate = shutil.which(name)
@@ -155,11 +157,11 @@ def ensure_python() -> str:
         candidate = shutil.which(name)
         if candidate and python_version_supported(get_python_version(candidate)):
             return candidate
-    raise RuntimeError("Python 3.10+ is required but was not found.")
+    raise RuntimeError("Python 3.10-3.12 is required but was not found.")
 
 
 def install_python() -> None:
-    log("[python] Python 3.10+ not found. Automatic install is required.")
+    log("[python] Python 3.10-3.12 not found. Automatic install is required.")
     system = platform.system().lower()
     if system == "darwin":
         run_command(["brew", "install", "python@3.12"])
@@ -168,7 +170,7 @@ def install_python() -> None:
         run_command(["sudo", "apt-get", "update"])
         run_command(["sudo", "apt-get", "install", "-y", "python3", "python3-venv"])
         return
-    raise RuntimeError("Unsupported OS for automatic Python install. Install Python 3.10+ manually.")
+    raise RuntimeError("Unsupported OS for automatic Python install. Install Python 3.10-3.12 manually.")
 
 
 def venv_python(root: Path) -> Path:

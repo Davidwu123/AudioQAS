@@ -20,7 +20,7 @@ cat >"$TMP_DIR/bin/python3" <<'STUB'
 set -euo pipefail
 echo "python3 $*" >> "$AUDIOQAS_TEST_LOG"
 if [ "${1:-}" = "-" ]; then
-  exit 1
+  exit 0
 fi
 if [ "${1:-}" = "-m" ] && [ "${2:-}" = "venv" ]; then
   echo "wrong-python-created-venv" >> "$AUDIOQAS_TEST_LOG"
@@ -61,7 +61,7 @@ cd "$TMP_DIR/repo"
 grep -q "python3.11 -m venv .venv" "$AUDIOQAS_TEST_LOG" || fail "python3.11 was not used to create .venv"
 grep -q "venv-python -m audioqas.bootstrap --no-start --no-open" "$AUDIOQAS_TEST_LOG" || fail "venv python did not run bootstrap"
 if grep -q "wrong-python-created-venv" "$AUDIOQAS_TEST_LOG"; then
-  fail "unsupported python3 created .venv"
+  fail "unsupported python3 or python3.13 created .venv"
 fi
 
 mkdir -p "$TMP_DIR/old/repo/scripts" "$TMP_DIR/old/repo/.venv/bin"

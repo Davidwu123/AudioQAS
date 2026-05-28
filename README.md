@@ -7,7 +7,7 @@
 **Speech evaluation · Mixed-content analysis · Signal metrics · local inference**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#)
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](#)
+[![Python 3.10-3.12](https://img.shields.io/badge/Python-3.10--3.12-blue.svg)](#)
 [![Node.js 18+ for tests](https://img.shields.io/badge/Node.js-18+_for_tests-blue.svg)](#)
 [![FastAPI](https://img.shields.io/badge/Framework-FastAPI-009688.svg)](#)
 
@@ -21,7 +21,7 @@
 
 Requirements for the normal runtime:
 
-- Python 3.10+ must be available as `python3.12`, `python3.11`, `python3.10`, or `python3`.
+- Python 3.10-3.12 must be available as `python3.12`, `python3.11`, `python3.10`, or `python3`.
 - `git` is required to clone or update the repository. If missing, the installer attempts to install it via Homebrew or apt.
 - `ffmpeg` and `ffprobe` 6.0+ are required for compressed audio decode and video audio extraction. If missing, the bootstrap attempts to install ffmpeg via Homebrew or apt.
 - First install/model warm-up needs network access for GitHub, Python packages, system packages when needed, and model assets.

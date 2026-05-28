@@ -7,7 +7,7 @@ cd "$ROOT_DIR"
 python_supported() {
   "$1" - <<'PY' >/dev/null 2>&1
 import sys
-raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
+raise SystemExit(0 if (3, 10) <= sys.version_info < (3, 13) else 1)
 PY
 }
 
@@ -17,7 +17,7 @@ find_python() {
       printf '%s\n' "$PYTHON_BIN"
       return
     fi
-    echo "[python] Failed. Reason: PYTHON_BIN=$PYTHON_BIN is older than Python 3.10." >&2
+    echo "[python] Failed. Reason: PYTHON_BIN=$PYTHON_BIN is outside supported Python 3.10-3.12 range." >&2
     exit 1
   fi
   for candidate in python3.12 python3.11 python3.10 python3; do
@@ -26,8 +26,8 @@ find_python() {
       return
     fi
   done
-  echo "[python] Failed. Reason: Python 3.10+ is required but was not found." >&2
-  echo "[python] Next: install Python 3.10+ or run with PYTHON_BIN=/path/to/python3.10." >&2
+  echo "[python] Failed. Reason: Python 3.10-3.12 is required but was not found." >&2
+  echo "[python] Next: install Python 3.12 or run with PYTHON_BIN=/path/to/python3.12." >&2
   exit 1
 }
 
