@@ -217,8 +217,8 @@ def ensure_venv(root: Path, python_bin: str) -> None:
     if venv_python(root).exists():
         version = get_python_version(str(venv_python(root)))
         if not python_version_supported(version):
-            log("[python] Existing .venv uses unsupported Python; upgrading in place.")
-            run_command([python_bin, "-m", "venv", "--upgrade", ".venv"], cwd=root)
+            log("[python] Existing .venv uses unsupported Python; recreating in place.")
+            run_command([python_bin, "-m", "venv", "--clear", ".venv"], cwd=root)
             return
         log("[python] Reusing .venv")
         return

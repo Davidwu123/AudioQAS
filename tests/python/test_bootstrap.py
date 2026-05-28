@@ -194,7 +194,7 @@ def test_ensure_venv_upgrades_unsupported_existing_venv(tmp_path, monkeypatch):
     bootstrap.ensure_venv(tmp_path, "/opt/homebrew/bin/python3.11")
 
     assert recorder.commands == [
-        (["/opt/homebrew/bin/python3.11", "-m", "venv", "--upgrade", ".venv"], tmp_path, None, True)
+        (["/opt/homebrew/bin/python3.11", "-m", "venv", "--clear", ".venv"], tmp_path, None, True)
     ]
 
 

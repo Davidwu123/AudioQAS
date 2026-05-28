@@ -79,7 +79,7 @@ chmod +x "$TMP_DIR/old/repo/.venv/bin/python"
 cd "$TMP_DIR/old/repo"
 ./scripts/audioqas-bootstrap --no-start
 
-grep -q "python3.11 -m venv .venv" "$AUDIOQAS_TEST_LOG" || fail "old .venv was not rebuilt with python3.11"
+grep -q "python3.11 -m venv --clear .venv" "$AUDIOQAS_TEST_LOG" || fail "old .venv was not rebuilt with python3.11"
 grep -q "venv-python -m audioqas.bootstrap --no-start" "$AUDIOQAS_TEST_LOG" || fail "rebuilt venv did not run bootstrap"
 
 mkdir -p "$TMP_DIR/install/repo/scripts" "$TMP_DIR/install/bin"

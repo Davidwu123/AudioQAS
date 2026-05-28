@@ -98,8 +98,8 @@ if [ ! -x ".venv/bin/python" ]; then
   echo "[python] Purpose: create repo-local virtual environment for AudioQAS runtime."
   "$PYTHON_BIN" -m venv .venv
 elif ! venv_supported; then
-  echo "[python] Existing .venv uses unsupported Python; upgrading in place."
-  "$PYTHON_BIN" -m venv --upgrade .venv
+  echo "[python] Existing .venv uses unsupported Python; recreating in place."
+  "$PYTHON_BIN" -m venv --clear .venv
 fi
 
 ".venv/bin/python" -m audioqas.bootstrap "$@"
