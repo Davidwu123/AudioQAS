@@ -21,7 +21,7 @@
 
 Requirements for the normal runtime:
 
-- Python 3.10-3.12 must be available as `python3.12`, `python3.11`, `python3.10`, or `python3`.
+- Python 3.10-3.12 is required. If missing, the bootstrap attempts to install Python 3.12 via Homebrew or apt; otherwise it reuses `python3.12`, `python3.11`, `python3.10`, or `python3`.
 - `git` is required to clone or update the repository. If missing, the installer attempts to install it via Homebrew or apt.
 - `ffmpeg` and `ffprobe` 6.0+ are required for compressed audio decode and video audio extraction. If missing, the bootstrap attempts to install ffmpeg via Homebrew or apt.
 - First install/model warm-up needs network access for GitHub, Python packages, system packages when needed, and model assets.

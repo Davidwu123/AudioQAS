@@ -11,6 +11,34 @@ raise SystemExit(0 if (3, 10) <= sys.version_info < (3, 13) else 1)
 PY
 }
 
+find_installed_python() {
+  for candidate in python3.12 python3.11 python3.10 python3; do
+    if command -v "$candidate" >/dev/null 2>&1 && python_supported "$candidate"; then
+      command -v "$candidate"
+      return
+    fi
+  done
+  return 1
+}
+
+install_python() {
+  echo "[python] Python 3.10-3.12 not found. Automatic install is required." >&2
+  if command -v brew >/dev/null 2>&1; then
+    echo "[python] Purpose: install Python 3.12 for AudioQAS runtime and virtual environment creation." >&2
+    brew install python@3.12 >&2
+    return
+  fi
+  if command -v apt-get >/dev/null 2>&1; then
+    echo "[python] Purpose: install system Python and venv support for AudioQAS runtime." >&2
+    sudo apt-get update >&2
+    sudo apt-get install -y python3 python3-venv >&2
+    return
+  fi
+  echo "[python] Failed. Reason: Python 3.10-3.12 is required, but no supported package manager was found." >&2
+  echo "[python] Next: install Python 3.12 or run with PYTHON_BIN=/path/to/python3.12." >&2
+  exit 1
+}
+
 find_python() {
   if [ -n "${PYTHON_BIN:-}" ]; then
     if python_supported "$PYTHON_BIN"; then
@@ -20,13 +48,16 @@ find_python() {
     echo "[python] Failed. Reason: PYTHON_BIN=$PYTHON_BIN is outside supported Python 3.10-3.12 range." >&2
     exit 1
   fi
-  for candidate in python3.12 python3.11 python3.10 python3; do
-    if command -v "$candidate" >/dev/null 2>&1 && python_supported "$candidate"; then
-      command -v "$candidate"
-      return
-    fi
-  done
-  echo "[python] Failed. Reason: Python 3.10-3.12 is required but was not found." >&2
+  if python_bin="$(find_installed_python)"; then
+    printf '%s\n' "$python_bin"
+    return
+  fi
+  install_python
+  if python_bin="$(find_installed_python)"; then
+    printf '%s\n' "$python_bin"
+    return
+  fi
+  echo "[python] Failed. Reason: Python 3.10-3.12 is required but was not found after automatic install." >&2
   echo "[python] Next: install Python 3.12 or run with PYTHON_BIN=/path/to/python3.12." >&2
   exit 1
 }
