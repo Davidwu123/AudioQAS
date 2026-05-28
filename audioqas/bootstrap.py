@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MIN_FFMPEG_VERSION = (6, 0, 0)
+MIN_PYTHON_VERSION = (3, 10, 0)
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,17 @@ def ffmpeg_version_supported(version: tuple[int, int, int]) -> bool:
     return version >= MIN_FFMPEG_VERSION
 
 
+def parse_python_version(text: str) -> tuple[int, int, int]:
+    match = re.search(r"(?:Python\s+)?(\d+)\.(\d+)(?:\.(\d+))?", text)
+    if not match:
+        return (0, 0, 0)
+    return tuple(int(part or 0) for part in match.groups())
+
+
+def python_version_supported(version: tuple[int, int, int]) -> bool:
+    return version >= MIN_PYTHON_VERSION
+
+
 def repo_ffmpeg_bin(root: Path) -> Path:
     return root / ".venv" / "tools" / "ffmpeg" / "bin" / "ffmpeg"
 
@@ -117,13 +129,46 @@ def run_command(
     subprocess.run(command, cwd=cwd, env=env, check=check)
 
 
+def get_python_version(python_bin: str) -> tuple[int, int, int]:
+    result = subprocess.run(
+        [
+            python_bin,
+            "-c",
+            "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return parse_python_version((result.stdout or "") + (result.stderr or ""))
+
+
 def ensure_python() -> str:
     if sys.version_info >= (3, 10):
         return sys.executable
-    candidate = shutil.which("python3")
-    if candidate is None:
-        raise RuntimeError("Python 3.10+ is required but was not found.")
-    return candidate
+    for name in ("python3.12", "python3.11", "python3.10", "python3"):
+        candidate = shutil.which(name)
+        if candidate and python_version_supported(get_python_version(candidate)):
+            return candidate
+    install_python()
+    for name in ("python3.12", "python3.11", "python3.10", "python3"):
+        candidate = shutil.which(name)
+        if candidate and python_version_supported(get_python_version(candidate)):
+            return candidate
+    raise RuntimeError("Python 3.10+ is required but was not found.")
+
+
+def install_python() -> None:
+    log("[python] Python 3.10+ not found. Automatic install is required.")
+    system = platform.system().lower()
+    if system == "darwin":
+        run_command(["brew", "install", "python@3.12"])
+        return
+    if system == "linux" and Path("/etc/debian_version").exists():
+        run_command(["sudo", "apt-get", "update"])
+        run_command(["sudo", "apt-get", "install", "-y", "python3", "python3-venv"])
+        return
+    raise RuntimeError("Unsupported OS for automatic Python install. Install Python 3.10+ manually.")
 
 
 def venv_python(root: Path) -> Path:
@@ -140,6 +185,11 @@ def runtime_env(root: Path) -> dict[str, str]:
 
 def ensure_venv(root: Path, python_bin: str) -> None:
     if venv_python(root).exists():
+        version = get_python_version(str(venv_python(root)))
+        if not python_version_supported(version):
+            log("[python] Existing .venv uses unsupported Python; upgrading in place.")
+            run_command([python_bin, "-m", "venv", "--upgrade", ".venv"], cwd=root)
+            return
         log("[python] Reusing .venv")
         return
     log("[python] Purpose: run AudioQAS backend, model inference, and audio processing.")

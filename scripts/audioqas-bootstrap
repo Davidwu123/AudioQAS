@@ -4,7 +4,38 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+python_supported() {
+  "$1" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
+PY
+}
+
+find_python() {
+  if [ -n "${PYTHON_BIN:-}" ]; then
+    if python_supported "$PYTHON_BIN"; then
+      printf '%s\n' "$PYTHON_BIN"
+      return
+    fi
+    echo "[python] Failed. Reason: PYTHON_BIN=$PYTHON_BIN is older than Python 3.10." >&2
+    exit 1
+  fi
+  for candidate in python3.12 python3.11 python3.10 python3; do
+    if command -v "$candidate" >/dev/null 2>&1 && python_supported "$candidate"; then
+      command -v "$candidate"
+      return
+    fi
+  done
+  echo "[python] Failed. Reason: Python 3.10+ is required but was not found." >&2
+  echo "[python] Next: install Python 3.10+ or run with PYTHON_BIN=/path/to/python3.10." >&2
+  exit 1
+}
+
+PYTHON_BIN="$(find_python)"
+
+venv_supported() {
+  [ -x ".venv/bin/python" ] && python_supported ".venv/bin/python"
+}
 
 if [ "${1:-}" = "--check-only" ] && [ ! -x ".venv/bin/python" ]; then
   "$PYTHON_BIN" -m audioqas.bootstrap "$@"
@@ -14,6 +45,9 @@ fi
 if [ ! -x ".venv/bin/python" ]; then
   echo "[python] Purpose: create repo-local virtual environment for AudioQAS runtime."
   "$PYTHON_BIN" -m venv .venv
+elif ! venv_supported; then
+  echo "[python] Existing .venv uses unsupported Python; upgrading in place."
+  "$PYTHON_BIN" -m venv --upgrade .venv
 fi
 
 ".venv/bin/python" -m audioqas.bootstrap "$@"

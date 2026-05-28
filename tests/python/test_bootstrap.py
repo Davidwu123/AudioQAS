@@ -45,6 +45,37 @@ def test_ffmpeg_version_requires_six_or_newer():
     assert bootstrap.ffmpeg_version_supported((5, 1, 0)) is False
 
 
+def test_parse_python_version():
+    assert bootstrap.parse_python_version("3.12.2") == (3, 12, 2)
+    assert bootstrap.parse_python_version("Python 3.10.13") == (3, 10, 13)
+    assert bootstrap.parse_python_version("not python") == (0, 0, 0)
+
+
+def test_python_version_requires_three_ten_or_newer():
+    assert bootstrap.python_version_supported((3, 10, 0)) is True
+    assert bootstrap.python_version_supported((3, 12, 2)) is True
+    assert bootstrap.python_version_supported((3, 7, 9)) is False
+
+
+def test_ensure_python_skips_unsupported_python3(monkeypatch):
+    versions = {
+        "/usr/bin/python3": (3, 7, 9),
+        "/opt/homebrew/bin/python3.11": (3, 11, 8),
+    }
+    paths = {
+        "python3.12": None,
+        "python3.11": "/opt/homebrew/bin/python3.11",
+        "python3.10": None,
+        "python3": "/usr/bin/python3",
+    }
+    monkeypatch.setattr(bootstrap.sys, "version_info", (3, 7, 9))
+    monkeypatch.setattr(bootstrap.shutil, "which", lambda name: paths.get(name))
+    monkeypatch.setattr(bootstrap, "get_python_version", lambda python: versions[python])
+    monkeypatch.setattr(bootstrap, "install_python", lambda: None)
+
+    assert bootstrap.ensure_python() == "/opt/homebrew/bin/python3.11"
+
+
 def test_ensure_ffmpeg_reuses_only_when_ffmpeg_and_ffprobe_exist(monkeypatch, tmp_path):
     installed = []
     paths = {
@@ -111,6 +142,20 @@ def test_default_bootstrap_commands_do_not_include_node_or_playwright(tmp_path, 
     assert any("-m pip install -e ." in command for command in commands)
     assert not any("npm" in command for command in commands)
     assert not any("playwright" in command for command in commands)
+
+
+def test_ensure_venv_upgrades_unsupported_existing_venv(tmp_path, monkeypatch):
+    recorder = Recorder()
+    (tmp_path / ".venv" / "bin").mkdir(parents=True)
+    (tmp_path / ".venv" / "bin" / "python").touch()
+    monkeypatch.setattr(bootstrap, "run_command", recorder.run)
+    monkeypatch.setattr(bootstrap, "get_python_version", lambda python: (3, 7, 9))
+
+    bootstrap.ensure_venv(tmp_path, "/opt/homebrew/bin/python3.11")
+
+    assert recorder.commands == [
+        (["/opt/homebrew/bin/python3.11", "-m", "venv", "--upgrade", ".venv"], tmp_path, None, True)
+    ]
 
 
 def test_with_test_bootstrap_commands_include_node_and_playwright(tmp_path, monkeypatch):
