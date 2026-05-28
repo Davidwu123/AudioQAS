@@ -209,6 +209,26 @@ def test_internal_warm_models_runs_all_model_smokes(monkeypatch, tmp_path):
     ]
 
 
+def test_warm_audiobox_reports_torch_audio_binary_mismatch(monkeypatch, tmp_path):
+    class BrokenScorer:
+        def score(self, path):
+            raise OSError("Symbol not found: _aoti_torch_abi_version")
+
+    import audioqas.models.audiobox_aesthetics as audiobox_aesthetics
+
+    monkeypatch.setattr(audiobox_aesthetics, "AudioBoxAestheticsScorer", BrokenScorer)
+
+    try:
+        bootstrap.warm_audiobox(tmp_path / "smoke.wav")
+    except RuntimeError as exc:
+        message = str(exc)
+        assert "torch/torchaudio" in message
+        assert "pip install --force-reinstall" in message
+        assert "Hugging Face" not in message
+    else:
+        raise AssertionError("warm_audiobox should fail on torch/torchaudio binary mismatch")
+
+
 def test_main_accepts_internal_warm_models_arg(monkeypatch):
     calls = []
     monkeypatch.setattr(bootstrap, "internal_warm_models", lambda root: calls.append(root))
@@ -239,3 +259,18 @@ def test_docs_reference_one_click_install_and_with_test():
     assert "./scripts/audioqas-bootstrap --with-test" in contributing
     assert "./scripts/audioqas-bootstrap --with-test" in agents
     assert ".venv/bin/python -m pip install pytest" not in agents
+
+
+def test_torch_and_torchaudio_versions_are_pinned_together():
+    root = Path.cwd()
+    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+    requirements = (root / "requirements.txt").read_text(encoding="utf-8")
+
+    assert '"torch==2.2.1"' in pyproject
+    assert '"torchaudio==2.2.1"' in pyproject
+    assert "torch==2.2.1" in requirements
+    assert "torchaudio==2.2.1" in requirements
+    assert '"torch>=2.2"' not in pyproject
+    assert '"torchaudio>=2.2"' not in pyproject
+    assert "torch>=2.2" not in requirements
+    assert "torchaudio>=2.2" not in requirements

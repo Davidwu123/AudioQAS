@@ -4,11 +4,11 @@
 
 ### Local-first Web Workbench for Audio Quality Assessment
 
-**Speech evaluation · Mixed-content analysis · Signal metrics · 100% local**
+**Speech evaluation · Mixed-content analysis · Signal metrics · local inference**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](#)
-[![Node.js 18+](https://img.shields.io/badge/Node.js-18+-blue.svg)](#)
+[![Node.js 18+ for tests](https://img.shields.io/badge/Node.js-18+_for_tests-blue.svg)](#)
 [![FastAPI](https://img.shields.io/badge/Framework-FastAPI-009688.svg)](#)
 
 [![PC Browser](https://img.shields.io/badge/Target-PC_Browser_only-orange.svg)](#)
@@ -18,6 +18,13 @@
 ---
 
 ## Get Started
+
+Requirements for the normal runtime:
+
+- Python 3.10+ must be available as `python3.12`, `python3.11`, `python3.10`, or `python3`.
+- `git` is required to clone or update the repository. If missing, the installer attempts to install it via Homebrew or apt.
+- `ffmpeg` and `ffprobe` 6.0+ are required for compressed audio decode and video audio extraction. If missing, the bootstrap attempts to install ffmpeg via Homebrew or apt.
+- First install/model warm-up needs network access for GitHub, Python packages, system packages when needed, and model assets.
 
 Repository:
 
@@ -35,6 +42,7 @@ The `github.com/Davidwu123/AudioQAS` URL is the repository page for humans.
 The `raw.githubusercontent.com/Davidwu123/AudioQAS/...` URL is the raw script content used by `curl`.
 
 The installer uses the current directory as the parent workspace. If the current directory is already the AudioQAS repo, it runs there; otherwise it uses `./AudioQAS`.
+If `raw.githubusercontent.com` is slow or blocked on your network, clone the repository first and run the existing-repository command below.
 
 Existing repository:
 
@@ -55,7 +63,7 @@ Use this if you want to run tests or contribute:
 
 `--with-test` installs pytest, Node/npm dependencies, and Playwright Chromium for regression testing.
 
-That's it — no production deployment, no cloud services, everything runs locally.
+That's it — no production deployment. Audio files are processed locally; install and first model warm-up may download dependencies or model assets.
 
 ---
 
@@ -83,7 +91,7 @@ Most audio quality tools are either:
 
 AudioQAS is different:
 
-- **100% local** — no API keys, no external services, audio never leaves your machine
+- **Local inference** — no API keys for normal use; uploaded audio is processed on your machine
 - **Web workbench** — dark-theme glass-panel UI designed for audio engineers, not casual users
 - **Multi-model** — DNSMOS, NISQA, AudioBox Aesthetics, each with independent results and cache
 - **Signal metrics alongside AI** — LUFS, True Peak, Clipping, THD, LRA — not just MOS numbers
@@ -147,7 +155,7 @@ AudioQAS is different:
 audioqas/
   web/           FastAPI app, runtime logic, static frontend
     api.py       REST endpoints
-    tasks.py     Task orchestration (single / compare / batch)
+    tasks.py     Task orchestration (single / compare; batch API is backend-only)
     services.py  Model dispatch
     registry.py  Model + signal metric registry
     runtime.py   Runtime state management
@@ -178,6 +186,8 @@ tests/
 
 ## API Surface
 
+The web product currently exposes single-file and compare flows. Batch endpoints exist as backend API surface and are not a separate UI product flow.
+
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
 | `GET` | `/` | Web UI |
@@ -191,9 +201,9 @@ tests/
 | `GET` | `/api/settings` | Current settings |
 | `POST` | `/api/evaluate/single` | Single-file evaluation |
 | `POST` | `/api/evaluate/compare` | Multi-group compare |
-| `POST` | `/api/evaluate/batch` | Batch evaluation |
+| `POST` | `/api/evaluate/batch` | Batch evaluation API, no dedicated UI flow |
 | `POST` | `/api/evaluate/upload` | File upload (single) |
-| `POST` | `/api/evaluate/upload-batch` | File upload (batch) |
+| `POST` | `/api/evaluate/upload-batch` | File upload batch API, no dedicated UI flow |
 | `POST` | `/api/evaluate/compare-upload` | File upload (compare) |
 | `POST` | `/api/settings` | Update settings |
 
@@ -216,6 +226,9 @@ npm run test:web-preview
 
 # Playwright browser tests
 npm run test:e2e
+
+# Playwright real-backend E2E tests
+npm run test:e2e:real
 ```
 
 <details>
@@ -223,7 +236,8 @@ npm run test:e2e
 
 - **pytest** covers: web API contracts, task orchestration, model services, schemas, settings/history store, preprocessing, logging, and DOM-level UI assertions
 - **jsdom** covers: single-file upload/render, compare flow, history states, settings persistence, progress lifecycle, export filename, XHR/fetch fallback
-- **Playwright** covers: real browser upload, page navigation, DOM snapshot verification — runs against static file server, no full backend dependency
+- **Playwright mock E2E** covers: real browser upload, page navigation, DOM snapshot verification against the local FastAPI app with mock-style fixtures.
+- **Playwright real-backend E2E** covers: browser upload and rendering through the local FastAPI app and real model backends.
 
 </details>
 

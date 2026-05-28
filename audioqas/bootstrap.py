@@ -354,9 +354,33 @@ def warm_audiobox(wav_path: Path) -> None:
 
         AudioBoxAestheticsScorer().score(str(wav_path))
     except Exception as exc:
+        if is_torch_audio_binary_mismatch(exc):
+            raise RuntimeError(
+                "AudioBox 依赖加载失败：torch/torchaudio 二进制版本不匹配。"
+                "请在项目根目录执行 `.venv/bin/python -m pip install --force-reinstall -e .` "
+                "以重新安装匹配版本。"
+            ) from exc
         raise RuntimeError(
             "AudioBox 模型资产缺失，且无法从 Hugging Face 下载。请恢复网络后重试，或手动提供本地 checkpoint。"
         ) from exc
+
+
+def is_torch_audio_binary_mismatch(exc: BaseException) -> bool:
+    chain: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None:
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    text = "\n".join(str(item) for item in chain)
+    markers = (
+        "_aoti_torch_abi_version",
+        "_torchaudio.abi3.so",
+        "Symbol not found",
+        "undefined symbol",
+    )
+    if "_aoti_torch_abi_version" in text:
+        return True
+    return ("torchaudio" in text or "_torchaudio" in text) and any(marker in text for marker in markers)
 
 
 def internal_warm_models(root: Path) -> None:
