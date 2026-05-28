@@ -50,6 +50,11 @@ export AUDIOQAS_TEST_LOG="$TMP_DIR/log"
 export PATH="$TMP_DIR/bin:$PATH"
 
 cd "$TMP_DIR"
+"$SCRIPT"
+grep -q "bootstrap $" "$AUDIOQAS_TEST_LOG" || fail "bootstrap without args not called"
+
+cd "$TMP_DIR"
+rm -rf AudioQAS
 "$SCRIPT" --with-test --no-start --no-open
 
 grep -q "git clone https://github.com/Davidwu123/AudioQAS.git AudioQAS" "$AUDIOQAS_TEST_LOG" || fail "clone not called"

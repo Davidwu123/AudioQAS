@@ -83,4 +83,7 @@ else
 fi
 
 cd "$target"
+if [ "${#BOOTSTRAP_ARGS[@]}" -eq 0 ]; then
+  exec ./scripts/audioqas-bootstrap
+fi
 exec ./scripts/audioqas-bootstrap "${BOOTSTRAP_ARGS[@]}"
