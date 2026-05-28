@@ -824,6 +824,18 @@ function getVisibleGroups(kind) {
   return defs.slice(0, count);
 }
 
+function getVisibleCompareGroupCount(kind) {
+  const dataset = getCompareDataset(kind, state.models);
+  const readyBuilderCount = document.querySelector(`[data-group-builder="${kind}"]`)?.querySelectorAll(".group-card").length || 0;
+  const uploadCardCount = document.querySelectorAll(`[data-compare-upload-group^="${kind}-"]`).length;
+  const uploadedKeys = Object.keys(runtimeState.compare.groups[kind] || {});
+  const uploadedMaxIndex = uploadedKeys.reduce((maxIndex, key) => {
+    const index = dataset.groups.findIndex((group) => group.key === key);
+    return Math.max(maxIndex, index);
+  }, -1);
+  return Math.min(dataset.groups.length, Math.max(readyBuilderCount, uploadCardCount, uploadedMaxIndex + 1));
+}
+
 function formatFileSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -907,19 +919,13 @@ function renderCompareBuilder(kind) {
 
   const selectedGroups = runtimeState.compare.groups[kind] || {};
   const uploadedKeys = Object.keys(selectedGroups).sort();
-  const existingCards = builder.querySelectorAll(".group-card");
   const addButton = builder.querySelector(`[data-add-group="${kind}"]`);
+  const visibleCount = getVisibleCompareGroupCount(kind);
 
-  if (existingCards.length < uploadedKeys.length) {
-    const dataset = getCompareDataset(kind, state.models);
-    while (builder.querySelectorAll(".group-card").length < uploadedKeys.length) {
-      const idx = builder.querySelectorAll(".group-card").length;
-      const nextGroup = dataset.groups[idx];
-      if (!nextGroup) break;
-      const card = document.createElement("div");
-      card.className = "group-card";
-      builder.insertBefore(card, addButton || null);
-    }
+  while (builder.querySelectorAll(".group-card").length < visibleCount) {
+    const card = document.createElement("div");
+    card.className = "group-card";
+    builder.insertBefore(card, addButton || null);
   }
 
   const visibleGroups = getVisibleGroups(kind);
@@ -927,9 +933,10 @@ function renderCompareBuilder(kind) {
     const group = visibleGroups[index];
     if (!group) return;
     const selected = selectedGroups[group.key];
-    const text = selected ? `${selected.name}<br>本机已选择` : group.inputText;
+    const text = selected ? `${selected.name}<br>本机已选择` : "未上传<br>点击上传文件";
     card.innerHTML = `<strong>${group.key}</strong><span>${text}</span>`;
     card.classList.remove("active", "empty");
+    card.classList.toggle("empty", !selected);
     card.onclick = () => {
       compareFileInputs[kind][group.key] ||= createHiddenCompareInput(kind, group.key);
       compareFileInputs[kind][group.key].click();

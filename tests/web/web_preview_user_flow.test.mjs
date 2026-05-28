@@ -1482,6 +1482,52 @@ test("compare partial upload reaches ready state before starting", async () => {
   }
 });
 
+test("compare keeps added but not uploaded group visible after minimum files are ready", async () => {
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": [],
+      "/api/evaluate/compare-upload": buildJsonResponse(buildDnsmosComparePayload()),
+    },
+  });
+  try {
+    await app.openCompare("eval");
+    await app.click('[data-compare-add-group="eval"]');
+    await waitFor(app.window, () => app.document.querySelector('[data-compare-upload-group="eval-C"]'), "empty compare C group visible");
+    await app.uploadCompare("eval", { A: "a.wav", B: "b.wav" }, { start: false });
+
+    assert.equal(app.isVisible('[data-compare-state="eval-ready"]'), true);
+    assert.equal(app.text('[data-group-builder="eval"]').includes("a.wav"), true);
+    assert.equal(app.text('[data-group-builder="eval"]').includes("b.wav"), true);
+    assert.equal(app.text('[data-group-builder="eval"]').includes("C"), true);
+    assert.equal(app.text('[data-group-builder="eval"]').includes("未上传"), true);
+  } finally {
+    await app.close();
+  }
+});
+
+test("analysis compare keeps added but not uploaded group visible after minimum files are ready", async () => {
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": [],
+      "/api/evaluate/compare-upload": buildJsonResponse(buildAudioboxComparePayload()),
+    },
+  });
+  try {
+    await app.openCompare("analysis");
+    await app.click('[data-compare-add-group="analysis"]');
+    await waitFor(app.window, () => app.document.querySelector('[data-compare-upload-group="analysis-C"]'), "analysis empty compare C group visible");
+    await app.uploadCompare("analysis", { A: "a.wav", B: "b.wav" }, { start: false });
+
+    assert.equal(app.isVisible('[data-compare-state="analysis-ready"]'), true);
+    assert.equal(app.text('[data-group-builder="analysis"]').includes("a.wav"), true);
+    assert.equal(app.text('[data-group-builder="analysis"]').includes("b.wav"), true);
+    assert.equal(app.text('[data-group-builder="analysis"]').includes("C"), true);
+    assert.equal(app.text('[data-group-builder="analysis"]').includes("未上传"), true);
+  } finally {
+    await app.close();
+  }
+});
+
 test("page switching keeps single results isolated by page", async () => {
   const app = await bootPreview({
     fetchMap: {
