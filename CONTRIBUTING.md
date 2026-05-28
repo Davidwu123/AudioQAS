@@ -7,37 +7,22 @@ Thanks for contributing to AudioQAS.
 Recommended local environment:
 
 - Python `3.10+`
-- Node.js `18+`
-- npm
-- `ffmpeg` on `PATH`
+- ffmpeg `6.0+`
+- Node.js `18+` and npm only when running `--with-test`
 
 Project setup:
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -e ".[dev]"
-npm install
-npx playwright install
+./scripts/audioqas-bootstrap --with-test
 ```
 
-System dependency examples:
-
-```bash
-# macOS
-brew install ffmpeg
-
-# Ubuntu / Debian
-sudo apt-get update && sudo apt-get install -y ffmpeg
-```
-
-This repository currently requires `ffmpeg` to be available on `PATH` for video input handling.
-We do not yet pin a minimum `ffmpeg` version in the project metadata.
+Default `./scripts/audioqas-bootstrap` is for product runtime only. It does not install pytest, Node/npm packages, `node_modules`, or Playwright browsers.
+Use `--with-test` when you need the regression test toolchain.
 
 ## Run Locally
 
 ```bash
-.venv/bin/python -m audioqas.web.run_local
+./scripts/audioqas-bootstrap
 ```
 
 Open:
