@@ -11,7 +11,9 @@ from scipy.fft import rfft, rfftfreq
 from audioqas.logging import get_logger, set_event
 from audioqas.core.preprocessor import (
     PREPROCESS_SETTINGS,
+    FFMPEG_AUDIO_EXTS,
     VIDEO_EXTS,
+    _decode_audio_with_ffmpeg,
     _ensure_preprocess_dir,
     _extract_audio,
     ensure_non_empty_audio,
@@ -19,6 +21,7 @@ from audioqas.core.preprocessor import (
     build_preprocessed_name,
     current_preprocess_settings,
     format_pipeline_steps,
+    read_audio,
 )
 logger = get_logger(__name__)
 
@@ -86,6 +89,7 @@ ANALYSIS_TARGET_SR = 48000
 def _preprocess_for_analysis(audio_path: str) -> tuple[str, dict]:
     ext = os.path.splitext(audio_path)[1].lower()
     is_video = ext in VIDEO_EXTS
+    needs_audio_decode = ext in FFMPEG_AUDIO_EXTS
     pipeline_steps = ["source_video" if is_video else "source_audio"]
     if is_video:
         if not PREPROCESS_SETTINGS["extract_audio"]:
@@ -93,8 +97,12 @@ def _preprocess_for_analysis(audio_path: str) -> tuple[str, dict]:
         out_name = build_preprocessed_name(audio_path, is_video=True)
         audio_path = _extract_audio(audio_path, ANALYSIS_TARGET_SR, out_name)
         pipeline_steps.append("extract_audio")
+    elif needs_audio_decode:
+        out_name = build_preprocessed_name(audio_path)
+        audio_path = _decode_audio_with_ffmpeg(audio_path, ANALYSIS_TARGET_SR, out_name)
+        pipeline_steps.append("decode_audio")
 
-    audio, orig_sr = sf.read(audio_path)
+    audio, orig_sr = read_audio(audio_path)
     ensure_non_empty_audio(audio)
     orig_channels = 1 if audio.ndim == 1 else audio.shape[1]
     duration = len(audio) / orig_sr
@@ -152,6 +160,8 @@ def _preprocess_for_analysis(audio_path: str) -> tuple[str, dict]:
 
 def _compute_lufs(audio: np.ndarray, sr: int) -> tuple[float, float]:
     meter = pyloudnorm.Meter(sr)
+    if audio.shape[0] < meter.block_size * sr:
+        return -70.0, 0.0
     lufs = meter.integrated_loudness(audio)
     lra = meter.loudness_range(audio)
     if lufs == -np.inf:

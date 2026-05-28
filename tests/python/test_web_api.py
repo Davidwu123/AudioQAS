@@ -1,5 +1,7 @@
 from pathlib import Path
 import os
+import shutil
+import subprocess
 
 from fastapi.testclient import TestClient
 
@@ -18,6 +20,7 @@ from audioqas.web.schemas import EvalDomain
 ROOT = Path(__file__).resolve().parents[2]
 REAL_FILE_1 = ROOT / "tests" / "fixtures" / "test1.wav"
 REAL_FILE_2 = ROOT / "tests" / "fixtures" / "test2.wav"
+FORMAT_FIXTURE_DIR = ROOT / "tests" / "fixtures" / "format_matrix"
 
 
 def _with_real_preprocess_dir(tmp_path, monkeypatch) -> None:
@@ -107,6 +110,50 @@ class FakeEvaluationService:
         )
 
 
+class ReadAudioEvaluationService(FakeEvaluationService):
+    def evaluate_single(self, *, domain, model_key, file_path, include_signal=True):
+        from audioqas.core.preprocessor import read_audio
+
+        audio, sr = read_audio(file_path)
+        assert len(audio) == 4
+        assert sr == 16000
+        return super().evaluate_single(
+            domain=domain,
+            model_key=model_key,
+            file_path=file_path,
+            include_signal=include_signal,
+        )
+
+
+class PreprocessOnlyEvaluationService(FakeEvaluationService):
+    def evaluate_single(self, *, domain, model_key, file_path, include_signal=True):
+        from audioqas.models.dnsmos import _preprocess_audio
+
+        processed_path, meta = _preprocess_audio(file_path)
+        model_result = {
+            "eval_type": "mos",
+            "model_name": "DNSMOS",
+            "model_version": "preprocess-test",
+            "dimensions": {"OVRL": {"score": 4.0, "grade": "Good", "description": "ok"}},
+            "grade": "Good",
+            "descriptions": {"OVRL": "ok"},
+            "timestamp": "2026-05-18T00:00:00",
+            "file_path": file_path,
+            "original_sr": meta["original_sr"],
+            "original_channels": meta["original_channels"],
+            "duration": meta["duration"],
+            "preprocessed": meta["preprocessed"],
+            "preprocessed_path": processed_path,
+            "pipeline_steps": meta["pipeline_steps"],
+        }
+        return SingleTaskResult(
+            domain=domain,
+            file_path=file_path,
+            model=ModelExecutionResult(model_key=model_key, domain=domain, result=model_result),
+            signal=None,
+        )
+
+
 class FakeHistoryStore:
     def list_items(self):
         return [
@@ -142,6 +189,86 @@ class FakeHistoryStore:
 
 def make_client() -> TestClient:
     return TestClient(create_app(evaluation_service=FakeEvaluationService(), history_store=FakeHistoryStore()))
+
+
+def _wav_with_zero_sizes_and_pcm_payload(sample_rate: int = 16000) -> bytes:
+    import numpy as np
+
+    pcm = np.array([0, 16384, -16384, 8192], dtype="<i2").tobytes()
+    return (
+        b"RIFF"
+        + (36).to_bytes(4, "little")
+        + b"WAVEfmt "
+        + (16).to_bytes(4, "little")
+        + (1).to_bytes(2, "little")
+        + (1).to_bytes(2, "little")
+        + sample_rate.to_bytes(4, "little")
+        + (sample_rate * 2).to_bytes(4, "little")
+        + (2).to_bytes(2, "little")
+        + (16).to_bytes(2, "little")
+        + b"data"
+        + (0).to_bytes(4, "little")
+        + pcm
+    )
+
+
+def _run_ffmpeg(command: list[str]) -> None:
+    subprocess.run(command, check=True, capture_output=True, text=True)
+
+
+def _generate_audio_fixture(path: Path) -> None:
+    codec_args = {
+        ".wav": ["-c:a", "pcm_s16le"],
+        ".flac": ["-c:a", "flac"],
+        ".ogg": ["-c:a", "libvorbis"],
+        ".mp3": ["-c:a", "libmp3lame"],
+        ".aac": ["-c:a", "aac"],
+        ".m4a": ["-c:a", "aac"],
+    }[path.suffix]
+    _run_ffmpeg(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=1000:duration=0.35:sample_rate=44100",
+            *codec_args,
+            "-y",
+            str(path),
+        ]
+    )
+
+
+def _generate_video_fixture(path: Path) -> None:
+    codec_args = {
+        ".mp4": ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac"],
+        ".mov": ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac"],
+        ".mkv": ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac"],
+        ".avi": ["-c:v", "mpeg4", "-c:a", "mp3"],
+    }[path.suffix]
+    _run_ffmpeg(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=64x64:rate=10:duration=0.35",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=1000:duration=0.35:sample_rate=44100",
+            "-shortest",
+            *codec_args,
+            "-y",
+            str(path),
+        ]
+    )
 
 
 def test_health_endpoint():
@@ -671,7 +798,6 @@ def test_upload_filename_collision(tmp_path, monkeypatch):
 def test_upload_file_size_limit(tmp_path, monkeypatch):
     """Upload exceeding MAX_UPLOAD_SIZE should be rejected with 413."""
     import audioqas.web.api as api_module
-    original_limit = api_module.MAX_UPLOAD_SIZE
     monkeypatch.setattr(api_module, "MAX_UPLOAD_SIZE", 100)  # 100 bytes
     client = TestClient(create_app(evaluation_service=FakeEvaluationService(), history_store=FakeHistoryStore()))
     response = client.post(
@@ -680,6 +806,17 @@ def test_upload_file_size_limit(tmp_path, monkeypatch):
         files={"file": ("big.wav", b"x" * 200, "audio/wav")},
     )
     assert response.status_code == 413
+    payload = response.json()["detail"]
+    assert payload["code"] == "file_too_large"
+    assert payload["stage"] == "upload"
+    assert "File too large" in payload["message"]
+    assert payload["message"].endswith("MB)")
+
+
+def test_default_upload_size_limit_is_500mb():
+    import audioqas.web.api as api_module
+
+    assert api_module.MAX_UPLOAD_SIZE == 500 * 1024 * 1024
 
 
 def test_compare_upload_keys_files_mismatch():
@@ -918,6 +1055,84 @@ def test_upload_header_only_wav_returns_400(tmp_path, monkeypatch):
     payload = response.json()["detail"]
     assert payload["code"] == "empty_audio"
     assert payload["stage"] == "preprocess"
+
+
+def test_upload_damaged_wav_header_with_pcm_payload_reaches_evaluation(tmp_path, monkeypatch):
+    _with_real_preprocess_dir(tmp_path, monkeypatch)
+    client = TestClient(
+        create_app(
+            evaluation_service=ReadAudioEvaluationService(),
+            history_store=FakeHistoryStore(),
+        )
+    )
+
+    response = client.post(
+        "/api/evaluate/upload",
+        data={"domain": EvalDomain.SPEECH.value, "model_key": "dnsmos", "include_signal": "false"},
+        files={"file": ("damaged_header.wav", _wav_with_zero_sizes_and_pcm_payload(), "audio/wav")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["model"]["result"]["original_sr"] == 16000
+
+
+def test_product_format_fixtures_upload_and_preprocess(tmp_path, monkeypatch):
+    _with_real_preprocess_dir(tmp_path, monkeypatch)
+    client = TestClient(
+        create_app(
+            evaluation_service=PreprocessOnlyEvaluationService(),
+            history_store=FakeHistoryStore(),
+        )
+    )
+    format_specs = [
+        ("wav", "audio/wav", "audio"),
+        ("flac", "audio/flac", "audio"),
+        ("ogg", "audio/ogg", "audio"),
+        ("mp3", "audio/mpeg", "audio"),
+        ("aac", "audio/aac", "audio"),
+        ("m4a", "audio/mp4", "audio"),
+        ("mp4", "video/mp4", "video"),
+        ("mov", "video/quicktime", "video"),
+        ("mkv", "video/x-matroska", "video"),
+        ("avi", "video/x-msvideo", "video"),
+    ]
+    results = {}
+
+    for ext, mime, media_kind in format_specs:
+        media_path = FORMAT_FIXTURE_DIR / f"format_matrix.{ext}"
+        assert media_path.exists(), f"missing regression fixture: {media_path}"
+
+        with media_path.open("rb") as handle:
+            response = client.post(
+                "/api/evaluate/upload",
+                data={"domain": EvalDomain.SPEECH.value, "model_key": "dnsmos", "include_signal": "false"},
+                files={"file": (media_path.name, handle, mime)},
+            )
+
+        assert response.status_code == 200, f"{ext} failed: {response.text}"
+        payload = response.json()["model"]["result"]
+        assert payload["duration"] > 0, f"{ext} should expose non-zero duration"
+        assert payload["original_channels"] >= 1, f"{ext} should expose channel count"
+        assert Path(payload["preprocessed_path"]).exists(), f"{ext} should produce preprocess output"
+        results[ext] = {
+            "pipeline": payload["pipeline_steps"],
+            "sample_rate": payload["original_sr"],
+            "channels": payload["original_channels"],
+            "duration": payload["duration"],
+            "preprocessed_path": payload["preprocessed_path"],
+        }
+
+    assert results["mp3"]["pipeline"][0] == "source_audio"
+    assert "decode_audio" in results["mp3"]["pipeline"]
+    assert results["aac"]["pipeline"][0] == "source_audio"
+    assert "decode_audio" in results["aac"]["pipeline"]
+    assert results["m4a"]["pipeline"][0] == "source_audio"
+    assert "decode_audio" in results["m4a"]["pipeline"]
+    assert results["mp4"]["pipeline"][:2] == ["source_video", "extract_audio"]
+    assert results["mov"]["pipeline"][:2] == ["source_video", "extract_audio"]
+    assert results["mkv"]["pipeline"][:2] == ["source_video", "extract_audio"]
+    assert results["avi"]["pipeline"][:2] == ["source_video", "extract_audio"]
 
 
 def test_supplied_request_id_is_used_in_logs(tmp_path):

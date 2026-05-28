@@ -19,50 +19,41 @@
 
 ## Get Started
 
-Quick start only needs Python:
+Repository:
 
-- Python `3.10+`
-- `ffmpeg` on `PATH` for video upload and automatic audio extraction
-
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -e .
-.venv/bin/python -m audioqas.web.run_local
+```text
+https://github.com/Davidwu123/AudioQAS
 ```
 
-Then open **http://127.0.0.1:8000**
+One-command install and launch:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Davidwu123/AudioQAS/main/scripts/audioqas-install.sh | bash
+```
+
+The `github.com/Davidwu123/AudioQAS` URL is the repository page for humans.
+The `raw.githubusercontent.com/Davidwu123/AudioQAS/...` URL is the raw script content used by `curl`.
+
+The installer uses the current directory as the parent workspace. If the current directory is already the AudioQAS repo, it runs there; otherwise it uses `./AudioQAS`.
+
+Existing repository:
+
+```bash
+./scripts/audioqas-bootstrap
+```
 
 > Some Python dependencies are heavy (`torch`, `torchaudio`, `onnxruntime`). Expect longer install time on first run.
-> Video input requires `ffmpeg` to be available on your system `PATH`.
-> `ffmpeg` is currently treated as a required system dependency, but this repository does not yet pin or verify a minimum `ffmpeg` version.
+> The default setup installs product runtime dependencies only. It does not install pytest, Node/npm packages, `node_modules`, or Playwright browsers.
 
 ### Developer Setup
 
 Use this if you want to run tests or contribute:
 
-- Python `3.10+`
-- Node.js `18+`
-- npm
-- `ffmpeg` on `PATH`
-
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -e ".[dev]"
-npm install
-npx playwright install
+./scripts/audioqas-bootstrap --with-test
 ```
 
-Common system install examples:
-
-```bash
-# macOS
-brew install ffmpeg
-
-# Ubuntu / Debian
-sudo apt-get update && sudo apt-get install -y ffmpeg
-```
+`--with-test` installs pytest, Node/npm dependencies, and Playwright Chromium for regression testing.
 
 That's it — no production deployment, no cloud services, everything runs locally.
 

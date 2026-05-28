@@ -97,6 +97,15 @@ test("html exposes explicit single-file entry without batch upload triggers", ()
   assert.doesNotMatch(html, /\+ 添加文件/);
 });
 
+test("upload format hints list ffmpeg-verified product formats", () => {
+  const html = fs.readFileSync(new URL("../../audioqas/web/static/web-preview.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../../audioqas/web/static/web-preview-app.js", import.meta.url), "utf8");
+
+  assert.match(html, /音频 wav\/flac\/mp3\/aac\/m4a\/ogg · 视频 mp4\/mov\/mkv\/avi（需 ffmpeg）/);
+  assert.match(app, /音频 wav\/flac\/mp3\/aac\/m4a\/ogg · 视频 mp4\/mov\/mkv\/avi（需 ffmpeg）/);
+  assert.match(app, /input\.accept = "\.wav,\.flac,\.mp3,\.aac,\.m4a,\.ogg,\.mp4,\.mov,\.mkv,\.avi"/);
+});
+
 test("speech single-file mapping keeps dnsmos primary dimensions", () => {
   const payload = {
     domain: "speech",
@@ -254,6 +263,16 @@ test("trace text prefers backend pipeline steps over inferred defaults", () => {
   });
 
   assert.equal(trace, "原始文件 → 送入 DNSMOS");
+});
+
+test("trace text localizes ffmpeg audio decode pipeline step", () => {
+  const trace = preview.buildTraceText({
+    file_path: "clip.mp3",
+    model_name: "NISQA",
+    pipeline_steps: ["source_audio", "decode_audio", "keep_48k"],
+  });
+
+  assert.equal(trace, "原始文件 → 解码音频 → 保持 48kHz → 送入 NISQA");
 });
 
 test("trace text shows disabled preprocess hints when backend skipped auto steps", () => {

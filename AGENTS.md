@@ -17,12 +17,14 @@ Primary files:
 ## Run & Verify
 
 ```bash
-python3.12 -m venv .venv
-.venv/bin/python -m pip install pytest
+./scripts/audioqas-bootstrap --with-test --no-start --no-open
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q
 npm run test:web-preview
-.venv/bin/python -m audioqas.web.run_local
+./scripts/audioqas-bootstrap
 ```
+
+Default `./scripts/audioqas-bootstrap` installs product runtime dependencies only.
+Use `--with-test` for pytest, Node/npm dependencies, `node_modules`, and Playwright browsers.
 
 ## Preview Architecture
 

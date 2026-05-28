@@ -66,6 +66,40 @@ def test_resample_changes_length():
     assert len(resampled) == 16000
 
 
+def _wav_with_zero_sizes_and_pcm_payload(sample_rate: int = 16000) -> bytes:
+    import numpy as np
+
+    pcm = np.array([0, 16384, -16384, 8192], dtype="<i2").tobytes()
+    return (
+        b"RIFF"
+        + (36).to_bytes(4, "little")
+        + b"WAVEfmt "
+        + (16).to_bytes(4, "little")
+        + (1).to_bytes(2, "little")
+        + (1).to_bytes(2, "little")
+        + sample_rate.to_bytes(4, "little")
+        + (sample_rate * 2).to_bytes(4, "little")
+        + (2).to_bytes(2, "little")
+        + (16).to_bytes(2, "little")
+        + b"data"
+        + (0).to_bytes(4, "little")
+        + pcm
+    )
+
+
+def test_read_audio_recovers_wav_with_zero_data_size_and_pcm_payload(tmp_path):
+    import numpy as np
+    from audioqas.core.preprocessor import read_audio
+
+    audio_path = tmp_path / "damaged_header.wav"
+    audio_path.write_bytes(_wav_with_zero_sizes_and_pcm_payload())
+
+    audio, sr = read_audio(str(audio_path))
+
+    assert sr == 16000
+    assert np.allclose(audio, np.array([0.0, 0.5, -0.5, 0.25]), atol=1e-6)
+
+
 def test_default_preprocess_dir_is_project_tmp_dir():
     from pathlib import Path
     from audioqas.core import preprocessor
@@ -82,6 +116,16 @@ def test_analysis_output_keys_are_five_computed_metrics():
     assert set(METRIC_DESCRIPTIONS.keys()) == {"LUFS", "LRA", "TruePeak", "Clipping", "THD"}
     assert "SNR" not in METRIC_DESCRIPTIONS
     assert "Stereo" not in METRIC_DESCRIPTIONS
+
+
+def test_analysis_lufs_handles_short_audio_without_crashing():
+    import numpy as np
+    from audioqas.models.analysis import _compute_lufs
+
+    lufs, lra = _compute_lufs(np.zeros(4800), 48000)
+
+    assert lufs == -70.0
+    assert lra == 0.0
 
 
 def test_video_preprocess_marks_dnsmos_as_preprocessed(monkeypatch):

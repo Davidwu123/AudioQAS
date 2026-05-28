@@ -140,3 +140,12 @@ def test_bootstrap_logs_service_event(tmp_path):
 
     text = (tmp_path / "log" / "audioqas.log").read_text(encoding="utf-8")
     assert "bootstrap_payload_built" in text
+
+
+def test_audioqas_bootstrap_script_exists_and_is_executable():
+    import os
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[2] / "scripts" / "audioqas-bootstrap"
+    assert script.exists()
+    assert os.access(script, os.X_OK)
