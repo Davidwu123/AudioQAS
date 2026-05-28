@@ -20,7 +20,7 @@ from audioqas.web.services import WebPreviewService
 from audioqas.web.schemas import EvalDomain
 from audioqas.web.tasks import EvaluationService
 
-MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100 MB
+MAX_UPLOAD_SIZE = 500 * 1024 * 1024  # 500 MB
 logger = get_logger(__name__)
 
 
@@ -71,6 +71,14 @@ PREPROCESS_ERROR_MESSAGES = {
     "empty_audio": "The uploaded file contains no audio samples.",
     "invalid_audio_file": "The uploaded file could not be decoded as a supported audio/video file.",
 }
+
+
+def _file_too_large_detail(max_upload_size: int) -> dict[str, str]:
+    return {
+        "code": "file_too_large",
+        "message": f"File too large (max {max_upload_size // (1024 * 1024)}MB)",
+        "stage": "upload",
+    }
 
 
 def _new_request_id(scene: str, supplied: str | None = None) -> str:
@@ -389,7 +397,7 @@ def create_app(
                             MAX_UPLOAD_SIZE,
                             file.filename,
                         )
-                    raise HTTPException(status_code=413, detail=f"File too large (max {MAX_UPLOAD_SIZE // (1024*1024)}MB)")
+                    raise HTTPException(status_code=413, detail=_file_too_large_detail(MAX_UPLOAD_SIZE))
                 if len(content) == 0:
                     with set_event("request_failed"):
                         logger.warning("request_failed reason=empty_upload filename=%s", file.filename)
@@ -460,7 +468,7 @@ def create_app(
                     target = upload_dir / filename
                     content = await upload.read()
                     if len(content) > MAX_UPLOAD_SIZE:
-                        raise HTTPException(status_code=413, detail=f"File too large (max {MAX_UPLOAD_SIZE // (1024*1024)}MB)")
+                        raise HTTPException(status_code=413, detail=_file_too_large_detail(MAX_UPLOAD_SIZE))
                     if len(content) == 0:
                         raise HTTPException(
                             status_code=400,
@@ -541,7 +549,7 @@ def create_app(
                     target = upload_dir / filename
                     content = await upload.read()
                     if len(content) > MAX_UPLOAD_SIZE:
-                        raise HTTPException(status_code=413, detail=f"File too large (max {MAX_UPLOAD_SIZE // (1024*1024)}MB)")
+                        raise HTTPException(status_code=413, detail=_file_too_large_detail(MAX_UPLOAD_SIZE))
                     if len(content) == 0:
                         raise HTTPException(
                             status_code=400,

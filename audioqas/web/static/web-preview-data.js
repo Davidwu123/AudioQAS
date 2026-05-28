@@ -257,6 +257,7 @@
         source_video: "原始视频",
         source_audio: "原始文件",
         extract_audio: "抽取音轨",
+        decode_audio: "解码音频",
         to_mono: "转单声道",
         resample_16k: "重采样到 16kHz",
         keep_48k: "保持 48kHz",

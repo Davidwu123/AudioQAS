@@ -152,7 +152,7 @@ async function bootPreview({ fetchMap }) {
       await this.click(`[data-add-group="${kind}"]`);
       await waitFor(window, () => window.document.querySelectorAll(`[data-group-builder="${kind}"] .group-card`).length >= 3, `add compare group for ${kind}`);
     },
-    async uploadCompare(kind, filesByGroup) {
+    async uploadCompare(kind, filesByGroup, options = {}) {
       const startBtn = window.document.querySelector(`[data-compare-start="${kind}"]`) || window.document.querySelector(`[data-compare-start-ready="${kind}"]`);
       for (const [groupKey, fileName] of Object.entries(filesByGroup)) {
         const groupCard = window.document.querySelector(`[data-compare-upload-group="${kind}-${groupKey}"]`);
@@ -176,6 +176,7 @@ async function bootPreview({ fetchMap }) {
         }
         await flush(window);
       }
+      if (options.start === false) return;
       if (startBtn) startBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
       await waitFor(window, () => trackedFetch.calls.some((call) => call.url === "/api/evaluate/compare-upload"), `${kind} compare upload fetch`);
       await waitFor(window, () => {
@@ -1154,6 +1155,75 @@ test("single upload shows readable preprocess-disabled error when backend reject
   }
 });
 
+test("single upload shows readable backend detail errors for empty audio", async () => {
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": [],
+      "/api/evaluate/upload": {
+        ok: false,
+        status: 400,
+        async json() {
+          return {
+            detail: {
+              code: "empty_audio",
+              stage: "preprocess",
+              message: "The uploaded file contains no audio samples.",
+            },
+          };
+        },
+        async text() {
+          return JSON.stringify({
+            detail: {
+              code: "empty_audio",
+              stage: "preprocess",
+              message: "The uploaded file contains no audio samples.",
+            },
+          });
+        },
+      },
+    },
+  });
+  try {
+    await app.uploadSingle("eval", "header_only.wav");
+
+    const errorPanel = app.document.querySelector('[data-state-panel="eval-single-error"]');
+    assert.ok(errorPanel, "error state panel exists for empty audio");
+    assert.equal(errorPanel.style.display !== "none", true, "error state panel visible");
+    const reasonEl = errorPanel.querySelector('[data-error-reason]');
+    assert.match(reasonEl.textContent, /contains no audio samples/);
+  } finally {
+    await app.close();
+  }
+});
+
+test("single upload shows readable file-too-large error when backend rejects oversized upload", async () => {
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": [],
+      "/api/evaluate/upload": {
+        ok: false,
+        status: 413,
+        async json() {
+          return {
+            detail: "File too large (max 500MB)",
+          };
+        },
+      },
+    },
+  });
+  try {
+    await app.uploadSingle("eval", "huge.mp4");
+
+    const errorPanel = app.document.querySelector('[data-state-panel="eval-single-error"]');
+    assert.ok(errorPanel, "error state panel exists for upload size limit");
+    assert.equal(errorPanel.style.display !== "none", true, "error state panel visible");
+    const reasonEl = errorPanel.querySelector('[data-error-reason]');
+    assert.match(reasonEl.textContent, /500MB|文件超过当前上传上限/);
+  } finally {
+    await app.close();
+  }
+});
+
 test("single upload flow reaches done state and shows progress stages", async () => {
   const app = await bootPreview({
     fetchMap: {
@@ -1328,6 +1398,151 @@ test("history detail button loads backend detail and shows alert summary", async
     assert.equal(app.alerts.length > 0, true);
     assert.match(app.alerts.at(-1), /meeting_take\.wav/);
     assert.match(app.alerts.at(-1), /DNSMOS/);
+  } finally {
+    await app.close();
+  }
+});
+
+test("single upload can reset while request is still running", async () => {
+  const deferred = createDeferredJsonResponse(buildDnsmosSinglePayload());
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": [],
+      "/api/evaluate/upload": deferred.response,
+    },
+  });
+  try {
+    await app.uploadSingle("eval", "slow.wav", { waitForCompletion: false });
+    await app.click('[data-reset-trigger="eval"]');
+
+    assert.equal(app.document.querySelector('[data-scene-root="eval"] [data-scene="empty"]').classList.contains("active"), true);
+    assert.equal(app.text('[data-single-upload-card="eval"] [data-single-upload-status="eval"]'), "未上传");
+  } finally {
+    deferred.resolve();
+    await app.close();
+  }
+});
+
+test("single upload error can retry through visible retry control", async () => {
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": [],
+      "/api/evaluate/upload": {
+        ok: false,
+        status: 400,
+        async json() {
+          return {
+            detail: {
+              code: "invalid_audio_file",
+              stage: "preprocess",
+              message: "The uploaded file could not be decoded as a supported audio/video file.",
+            },
+          };
+        },
+        async text() {
+          return JSON.stringify({
+            detail: {
+              code: "invalid_audio_file",
+              stage: "preprocess",
+              message: "The uploaded file could not be decoded as a supported audio/video file.",
+            },
+          });
+        },
+      },
+    },
+  });
+  try {
+    await app.uploadSingle("eval", "broken.wav");
+
+    assert.equal(app.isVisible('[data-state-panel="eval-single-error"]'), true);
+    const inputsBefore = app.document.querySelectorAll('input[type="file"]').length;
+    await app.click('[data-retry-trigger="eval:single"]');
+    assert.equal(app.document.querySelectorAll('input[type="file"]').length, inputsBefore);
+  } finally {
+    await app.close();
+  }
+});
+
+test("compare partial upload reaches ready state before starting", async () => {
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": [],
+      "/api/evaluate/compare-upload": buildJsonResponse(buildDnsmosComparePayload()),
+    },
+  });
+  try {
+    await app.openCompare("eval");
+    await app.uploadCompare("eval", { A: "a.wav", B: "b.wav" }, { start: false });
+
+    assert.equal(app.isVisible('[data-compare-state="eval-ready"]'), true);
+    assert.equal(app.text('[data-group-builder="eval"]').includes("a.wav"), true);
+    assert.equal(app.text('[data-group-builder="eval"]').includes("b.wav"), true);
+  } finally {
+    await app.close();
+  }
+});
+
+test("page switching keeps single results isolated by page", async () => {
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": [],
+      "/api/evaluate/upload": ({ options }) => {
+        const body = options.body;
+        const domain = body.get("domain");
+        return buildJsonResponse(domain === "mixed" ? buildAudioboxSinglePayload() : buildDnsmosSinglePayload());
+      },
+    },
+  });
+  try {
+    await app.uploadSingle("eval", "speech.wav");
+    await app.click('[data-page="analysis"]');
+    await app.uploadSingle("analysis", "mix.wav");
+
+    assert.equal(app.text('[data-page="analysis"] .card-title'), "mix.wav");
+    await app.click('[data-page="eval"]');
+    assert.equal(app.text('[data-page="eval"] .card-title'), "speech.wav");
+  } finally {
+    await app.close();
+  }
+});
+
+test("model switch after result caches previous model output", async () => {
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": [],
+      "/api/evaluate/upload": buildJsonResponse(buildDnsmosSinglePayload()),
+    },
+  });
+  try {
+    await app.uploadSingle("eval", "demo.wav");
+    assert.equal(app.text("[data-eval-model-grid]").includes("整体听感"), true);
+
+    await app.click('[data-model-scope="eval"][data-model-key="nisqa"]');
+    assert.equal(app.isVisible('[data-page="eval"] [data-result-area]'), false);
+
+    await app.click('[data-model-scope="eval"][data-model-key="dnsmos"]');
+    assert.equal(app.isVisible('[data-page="eval"] [data-result-area]'), true);
+    assert.equal(app.text("[data-eval-model-grid]").includes("整体听感"), true);
+  } finally {
+    await app.close();
+  }
+});
+
+test("compare model switch before start clears selected groups for the new model", async () => {
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": [],
+      "/api/evaluate/compare-upload": buildJsonResponse(buildDnsmosComparePayload()),
+    },
+  });
+  try {
+    await app.openCompare("eval");
+    await app.uploadCompare("eval", { A: "a.wav", B: "b.wav" }, { start: false });
+    assert.equal(app.isVisible('[data-compare-state="eval-ready"]'), true);
+
+    await app.click('[data-model-scope="eval"][data-model-key="nisqa"]');
+    assert.equal(app.isVisible('[data-compare-state="eval-empty"]'), true);
+    assert.equal(app.text('[data-compare-upload-group="eval-A"]').includes("未上传"), true);
   } finally {
     await app.close();
   }

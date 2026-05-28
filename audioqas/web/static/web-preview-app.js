@@ -209,7 +209,7 @@ function applySingleDetailTable(page, view, modelKey) {
 function createHiddenFileInput(page) {
   const input = document.createElement("input");
   input.type = "file";
-  input.accept = ".wav,.flac,.mp3,.aac,.ogg,.m4a,.mp4,.mkv,.avi,.mov";
+  input.accept = ".wav,.flac,.mp3,.aac,.m4a,.ogg,.mp4,.mov,.mkv,.avi";
   input.style.display = "none";
   input.addEventListener("change", async () => {
     const file = input.files?.[0];
@@ -229,7 +229,7 @@ const fileInputs = {
 function createHiddenCompareInput(kind, groupKey) {
   const input = document.createElement("input");
   input.type = "file";
-  input.accept = ".wav,.flac,.mp3,.aac,.ogg,.m4a,.mp4,.mkv,.avi,.mov";
+  input.accept = ".wav,.flac,.mp3,.aac,.m4a,.ogg,.mp4,.mov,.mkv,.avi";
   input.style.display = "none";
   input.addEventListener("change", async () => {
     const file = input.files?.[0];
@@ -311,10 +311,19 @@ function setSingleProgress(page, label, width) {
 }
 
 function explainUploadError(status, bodyText) {
+  if (typeof bodyText === "string") {
+    try {
+      const parsed = JSON.parse(bodyText);
+      bodyText = parsed?.detail ?? parsed;
+    } catch { /* use raw string below */ }
+  }
   if (typeof bodyText === "object" && bodyText !== null) {
     const code = typeof bodyText.code === "string" ? bodyText.code : "";
     const message = typeof bodyText.message === "string" ? bodyText.message : "";
     if (message) {
+      if (code === "empty_upload" || code === "empty_audio" || code === "invalid_audio_file") {
+        return message;
+      }
       if (code === "mono_convert_disabled") {
         return "自动转单声道已关闭，当前文件需要先转单声道后才能评测。";
       }
@@ -336,6 +345,11 @@ function explainUploadError(status, bodyText) {
   }
   if (bodyText.includes("video_extract_disabled")) {
     return "视频自动提取音轨已关闭，当前视频文件无法直接评测。";
+  }
+  if (status === 413 || bodyText.includes("File too large")) {
+    const match = bodyText.match(/max\s+(\d+MB)/i);
+    const sizeHint = match ? match[1] : "当前上传上限";
+    return `文件超过当前上传上限（${sizeHint}）。`;
   }
   return `Upload evaluate failed: ${status}`;
 }
@@ -371,6 +385,7 @@ async function evaluateUploadedFile(page, file) {
       const label = pct < 100 ? `上传中 ${pct}% · ${requestId}` : `上传完成 · ${requestId}`;
       setSingleProgress(page, label, `${Math.min(pct, 50)}%`);
     });
+    if (runtimeState.requests[page].single !== requestId) return;
     setSingleProgress(page, `模型评测中 · ${requestId}`, "55%");
     runtimeState.single[page] = { file, status: "done", result: payload, error: null };
     applySingleEvaluation(page, payload, file.name);
@@ -379,6 +394,7 @@ async function evaluateUploadedFile(page, file) {
     if (progressPanel) progressPanel.classList.add("done");
     renderStatePanels(page);
   } catch (error) {
+    if (runtimeState.requests[page].single !== requestId) return;
     console.error(error);
     runtimeState.single[page] = { file, status: "error", result: null, error: String(error) };
     render();
@@ -1596,7 +1612,7 @@ document.querySelectorAll("[data-compare-add-group]").forEach((button) => {
     card.innerHTML = `
       <div class="group-key">${groupKey}组</div>
       <div class="upload-hint">点击上传文件</div>
-      <div class="format-hint">音频 wav/flac/mp3/aac/m4a/ogg · 视频 mp4/mov/mkv/avi</div>
+      <div class="format-hint">音频 wav/flac/mp3/aac/m4a/ogg · 视频 mp4/mov/mkv/avi（需 ffmpeg）</div>
       <div class="file-status" data-group-status="${kind}-${groupKey}">未上传</div>
     `;
     card.addEventListener("click", () => {
