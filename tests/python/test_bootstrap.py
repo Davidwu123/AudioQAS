@@ -59,6 +59,25 @@ def test_python_version_supports_three_ten_through_three_twelve():
     assert bootstrap.python_version_supported((3, 13, 0)) is False
 
 
+def test_auto_install_os_support_is_limited_to_macos_and_ubuntu_2204(monkeypatch, tmp_path):
+    os_release = tmp_path / "os-release"
+
+    monkeypatch.setattr(bootstrap.platform, "system", lambda: "Darwin")
+    assert bootstrap.can_auto_install_with_apt(os_release) is False
+    assert bootstrap.auto_install_platform_label(os_release) == "macOS or Ubuntu 22.04"
+
+    monkeypatch.setattr(bootstrap.platform, "system", lambda: "Linux")
+    os_release.write_text('ID=ubuntu\nVERSION_ID="22.04"\n', encoding="utf-8")
+    assert bootstrap.can_auto_install_with_apt(os_release) is True
+    assert bootstrap.auto_install_platform_label(os_release) == "Ubuntu 22.04"
+
+    os_release.write_text('ID=ubuntu\nVERSION_ID="20.04"\n', encoding="utf-8")
+    assert bootstrap.can_auto_install_with_apt(os_release) is False
+
+    os_release.write_text('ID=debian\nVERSION_ID="12"\n', encoding="utf-8")
+    assert bootstrap.can_auto_install_with_apt(os_release) is False
+
+
 def test_ensure_python_skips_unsupported_python3(monkeypatch):
     versions = {
         "/usr/bin/python3": (3, 7, 9),
@@ -277,6 +296,8 @@ def test_docs_reference_one_click_install_and_with_test():
     assert "https://github.com/Davidwu123/AudioQAS" in readme
     assert "raw.githubusercontent.com/Davidwu123/AudioQAS/main/scripts/audioqas-install.sh" in readme
     assert "Python 3.10-3.12" in readme
+    assert "Ubuntu 22.04" in readme
+    assert "other Linux distributions" in readme
     assert "./scripts/audioqas-bootstrap --with-test" in contributing
     assert "./scripts/audioqas-bootstrap --with-test" in agents
     assert ".venv/bin/python -m pip install pytest" not in agents

@@ -132,3 +132,70 @@ cd "$TMP_DIR/install/repo"
 grep -q "brew install python@3.12" "$AUDIOQAS_TEST_LOG" || fail "python@3.12 was not installed when missing"
 grep -q "installed-python3.12 -m venv .venv" "$AUDIOQAS_TEST_LOG" || fail "installed python3.12 did not create .venv"
 grep -q "installed-venv-python -m audioqas.bootstrap --no-start" "$AUDIOQAS_TEST_LOG" || fail "installed venv did not run bootstrap"
+
+mkdir -p "$TMP_DIR/ubuntu/repo/scripts" "$TMP_DIR/ubuntu/bin"
+cp "$SCRIPT" "$TMP_DIR/ubuntu/repo/scripts/audioqas-bootstrap"
+chmod +x "$TMP_DIR/ubuntu/repo/scripts/audioqas-bootstrap"
+cat > "$TMP_DIR/ubuntu/bin/python3" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "ubuntu-python3 $*" >> "$AUDIOQAS_TEST_LOG"
+if [ "${1:-}" = "-" ]; then
+  exit 1
+fi
+exit 1
+STUB
+chmod +x "$TMP_DIR/ubuntu/bin/python3"
+cat > "$TMP_DIR/ubuntu/bin/apt-get" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "apt-get $*" >> "$AUDIOQAS_TEST_LOG"
+if [ "${1:-}" = "install" ]; then
+  cat > "$(dirname "$0")/python3.12" <<'PYTHON'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "ubuntu-python3.12 $*" >> "$AUDIOQAS_TEST_LOG"
+if [ "${1:-}" = "-" ]; then
+  exit 0
+fi
+if [ "${1:-}" = "-m" ] && [ "${2:-}" = "venv" ]; then
+  mkdir -p .venv/bin
+  cat > .venv/bin/python <<'VENVPY'
+#!/usr/bin/env bash
+if [ "${1:-}" = "-" ]; then
+  exit 0
+fi
+echo "ubuntu-venv-python $*" >> "$AUDIOQAS_TEST_LOG"
+VENVPY
+  chmod +x .venv/bin/python
+  exit 0
+fi
+exit 1
+PYTHON
+  chmod +x "$(dirname "$0")/python3.12"
+fi
+STUB
+chmod +x "$TMP_DIR/ubuntu/bin/apt-get"
+cat > "$TMP_DIR/ubuntu/bin/sudo" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+"$@"
+STUB
+chmod +x "$TMP_DIR/ubuntu/bin/sudo"
+export PATH="$TMP_DIR/ubuntu/bin:/usr/bin:/bin"
+cd "$TMP_DIR/ubuntu/repo"
+if AUDIOQAS_TEST_OS_RELEASE="$TMP_DIR/ubuntu/os-release" ./scripts/audioqas-bootstrap --no-start \
+  2>"$TMP_DIR/ubuntu/bootstrap-error.log"; then
+  fail "bootstrap should reject apt install outside Ubuntu 22.04"
+fi
+
+grep -q "Failed. Reason: automatic apt install is only supported on Ubuntu 22.04" "$TMP_DIR/ubuntu/bootstrap-error.log" || fail "missing Ubuntu 22.04 guard"
+cat > "$TMP_DIR/ubuntu/os-release" <<'OS'
+ID=ubuntu
+VERSION_ID="22.04"
+OS
+AUDIOQAS_TEST_OS_RELEASE="$TMP_DIR/ubuntu/os-release" ./scripts/audioqas-bootstrap --no-start
+
+grep -q "apt-get install -y python3 python3-venv" "$AUDIOQAS_TEST_LOG" || fail "Ubuntu 22.04 apt install not used"
+grep -q "ubuntu-python3.12 -m venv .venv" "$AUDIOQAS_TEST_LOG" || fail "Ubuntu installed python did not create .venv"
+grep -q "ubuntu-venv-python -m audioqas.bootstrap --no-start" "$AUDIOQAS_TEST_LOG" || fail "Ubuntu venv did not run bootstrap"

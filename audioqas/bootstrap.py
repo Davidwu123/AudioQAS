@@ -13,6 +13,7 @@ from pathlib import Path
 MIN_FFMPEG_VERSION = (6, 0, 0)
 MIN_PYTHON_VERSION = (3, 10, 0)
 MAX_PYTHON_VERSION = (3, 13, 0)
+UBUNTU_OS_RELEASE = Path("/etc/os-release")
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,33 @@ def python_version_supported(version: tuple[int, int, int]) -> bool:
     return MIN_PYTHON_VERSION <= version < MAX_PYTHON_VERSION
 
 
+def _parse_os_release(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    values: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key] = value.strip().strip('"')
+    return values
+
+
+def can_auto_install_with_apt(os_release: Path = UBUNTU_OS_RELEASE) -> bool:
+    if platform.system().lower() != "linux":
+        return False
+    values = _parse_os_release(os_release)
+    return values.get("ID") == "ubuntu" and values.get("VERSION_ID") == "22.04"
+
+
+def auto_install_platform_label(os_release: Path = UBUNTU_OS_RELEASE) -> str:
+    if platform.system().lower() == "darwin":
+        return "macOS or Ubuntu 22.04"
+    if can_auto_install_with_apt(os_release):
+        return "Ubuntu 22.04"
+    return "macOS or Ubuntu 22.04"
+
+
 def repo_ffmpeg_bin(root: Path) -> Path:
     return root / ".venv" / "tools" / "ffmpeg" / "bin" / "ffmpeg"
 
@@ -166,11 +194,11 @@ def install_python() -> None:
     if system == "darwin":
         run_command(["brew", "install", "python@3.12"])
         return
-    if system == "linux" and Path("/etc/debian_version").exists():
+    if can_auto_install_with_apt():
         run_command(["sudo", "apt-get", "update"])
         run_command(["sudo", "apt-get", "install", "-y", "python3", "python3-venv"])
         return
-    raise RuntimeError("Unsupported OS for automatic Python install. Install Python 3.10-3.12 manually.")
+    raise RuntimeError("Unsupported OS for automatic Python install. Supported auto-install OS: macOS or Ubuntu 22.04.")
 
 
 def venv_python(root: Path) -> Path:
@@ -233,11 +261,11 @@ def install_ffmpeg(root: Path) -> None:
     if system == "darwin":
         run_command(["brew", "install", "ffmpeg"])
         return
-    if system == "linux" and Path("/etc/debian_version").exists():
+    if can_auto_install_with_apt():
         run_command(["sudo", "apt-get", "update"])
         run_command(["sudo", "apt-get", "install", "-y", "ffmpeg"])
         return
-    raise RuntimeError("Unsupported OS for automatic ffmpeg install. Install ffmpeg 6.0+ manually.")
+    raise RuntimeError("Unsupported OS for automatic ffmpeg install. Supported auto-install OS: macOS or Ubuntu 22.04.")
 
 
 def ensure_node(root: Path) -> None:
@@ -251,11 +279,11 @@ def ensure_node(root: Path) -> None:
     if system == "darwin":
         run_command(["brew", "install", "node"])
         return
-    if system == "linux" and Path("/etc/debian_version").exists():
+    if can_auto_install_with_apt():
         run_command(["sudo", "apt-get", "update"])
         run_command(["sudo", "apt-get", "install", "-y", "nodejs", "npm"])
         return
-    raise RuntimeError("Node.js 18+ and npm are required for --with-test.")
+    raise RuntimeError("Node.js 18+ and npm are required for --with-test. Supported auto-install OS: macOS or Ubuntu 22.04.")
 
 
 def warm_models(root: Path, env: dict[str, str]) -> None:

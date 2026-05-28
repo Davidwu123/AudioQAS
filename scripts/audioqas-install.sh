@@ -4,9 +4,29 @@ set -euo pipefail
 REPO_URL="https://github.com/Davidwu123/AudioQAS.git"
 TARGET_DIR=""
 BOOTSTRAP_ARGS=()
+OS_RELEASE_FILE="${AUDIOQAS_TEST_OS_RELEASE:-/etc/os-release}"
 
 log() {
   printf '%s\n' "$*"
+}
+
+os_release_value() {
+  key="$1"
+  [ -r "$OS_RELEASE_FILE" ] || return 1
+  awk -F= -v key="$key" '$1 == key {gsub(/^"|"$/, "", $2); print $2; exit}' "$OS_RELEASE_FILE"
+}
+
+is_ubuntu_2204() {
+  [ "$(os_release_value ID)" = "ubuntu" ] && [ "$(os_release_value VERSION_ID)" = "22.04" ]
+}
+
+require_ubuntu_2204_for_apt() {
+  if is_ubuntu_2204; then
+    return
+  fi
+  log "[git] Failed. Reason: automatic apt install is only supported on Ubuntu 22.04."
+  log "[git] Next: install git manually or run on Ubuntu 22.04."
+  exit 1
 }
 
 install_git_if_missing() {
@@ -19,6 +39,7 @@ install_git_if_missing() {
     return
   fi
   if command -v apt-get >/dev/null 2>&1; then
+    require_ubuntu_2204_for_apt
     sudo apt-get update
     sudo apt-get install -y git
     return
