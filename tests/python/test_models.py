@@ -173,6 +173,61 @@ def test_video_preprocess_marks_aes_as_preprocessed(monkeypatch):
     assert meta["preprocessed_path"] == extracted
 
 
+def test_audiobox_score_recovers_from_closed_huggingface_client(monkeypatch):
+    import sys
+    import types
+    from audioqas.models import audiobox_aesthetics
+
+    attempts = []
+    resets = []
+
+    class FakeModel:
+        def to(self, device):
+            return self
+
+    class FakePredictor:
+        def __init__(self):
+            self.model = FakeModel()
+            self.device = "cpu"
+
+        def forward(self, items):
+            return [{"PQ": 7.0, "CE": 6.0, "CU": 5.0, "PC": 4.0}]
+
+    def initialize_predictor():
+        attempts.append("initialize")
+        if len(attempts) == 1:
+            raise RuntimeError("Cannot send a request, as the client has been closed.")
+        return FakePredictor()
+
+    monkeypatch.setattr(
+        audiobox_aesthetics,
+        "_preprocess_for_aes",
+        lambda path: (
+            path,
+            {
+                "original_sr": 48000,
+                "original_channels": 1,
+                "duration": 1.0,
+                "preprocessed": False,
+                "preprocessed_path": "",
+                "pipeline_steps": ["source_audio", "keep_48k"],
+            },
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "audiobox_aesthetics.infer",
+        types.SimpleNamespace(initialize_predictor=initialize_predictor),
+    )
+    monkeypatch.setattr("huggingface_hub.utils._http.close_session", lambda: resets.append("reset"))
+
+    result = audiobox_aesthetics.AudioBoxAestheticsScorer().score("sample.wav")
+
+    assert attempts == ["initialize", "initialize"]
+    assert resets == ["reset"]
+    assert result["dimensions"]["PQ"]["score"] == 7.0
+
+
 def test_video_preprocess_marks_analysis_as_preprocessed(monkeypatch):
     import numpy as np
     from audioqas.models import analysis

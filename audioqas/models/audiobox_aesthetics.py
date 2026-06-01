@@ -99,6 +99,7 @@ DimensionRegistry.register("AudioBox-Aesthetics", AES_LABELS, AES_DESCRIPTIONS, 
 
 AES_TARGET_SR = 48000
 logger = get_logger(__name__)
+HF_CLIENT_CLOSED_MESSAGE = "Cannot send a request, as the client has been closed."
 
 
 def _preprocess_for_aes(audio_path: str) -> tuple[str, dict]:
@@ -182,7 +183,7 @@ class AudioBoxAestheticsScorer(BaseScorer):
 
         from audiobox_aesthetics.infer import initialize_predictor
         import torch
-        predictor = initialize_predictor()
+        predictor = _initialize_predictor_with_hf_recovery(initialize_predictor)
         # Force CPU on macOS (MPS doesn't support autocast)
         predictor.model = predictor.model.to("cpu")
         predictor.device = "cpu"
@@ -227,3 +228,19 @@ class AudioBoxAestheticsScorer(BaseScorer):
             pipeline_steps=meta["pipeline_steps"],
             preprocess_settings=current_preprocess_settings(),
         )
+
+
+def _initialize_predictor_with_hf_recovery(initialize_predictor):
+    try:
+        return initialize_predictor()
+    except RuntimeError as exc:
+        if HF_CLIENT_CLOSED_MESSAGE not in str(exc):
+            raise
+        try:
+            from huggingface_hub.utils._http import close_session
+        except Exception:
+            raise exc
+        with set_event("hf_client_recovered"):
+            logger.warning("hf_client_closed resetting_huggingface_session")
+        close_session()
+        return initialize_predictor()
