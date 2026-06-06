@@ -119,7 +119,35 @@ async function setupPage(page, apiOverrides = {}) {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
   });
 
-  for (const [urlPattern, payload] of Object.entries(apiOverrides)) {
+  const taskOverrides = { ...apiOverrides };
+  if (apiOverrides["/api/evaluate/upload"] && !taskOverrides["/api/evaluate/upload-task"]) {
+    const payload = apiOverrides["/api/evaluate/upload"];
+    taskOverrides["/api/evaluate/upload-task"] = { task_id: "task-single-e2e" };
+    taskOverrides["/api/evaluate/tasks/task-single-e2e"] = {
+      id: "task-single-e2e",
+      status: "finished",
+      percent: 100,
+      label: "评测完成",
+      result: payload,
+      error: null,
+      events: [],
+    };
+  }
+  if (apiOverrides["/api/evaluate/compare-upload"] && !taskOverrides["/api/evaluate/compare-upload-task"]) {
+    const payload = apiOverrides["/api/evaluate/compare-upload"];
+    taskOverrides["/api/evaluate/compare-upload-task"] = { task_id: "task-compare-e2e" };
+    taskOverrides["/api/evaluate/tasks/task-compare-e2e"] = {
+      id: "task-compare-e2e",
+      status: "finished",
+      percent: 100,
+      label: `对比完成 · ${payload.items.length}/${payload.items.length} 文件完成`,
+      result: payload,
+      error: null,
+      events: [],
+    };
+  }
+
+  for (const [urlPattern, payload] of Object.entries(taskOverrides)) {
     await page.route(`**${urlPattern}`, async (route) => {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(payload) });
     });

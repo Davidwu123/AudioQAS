@@ -64,7 +64,7 @@ async function selectModel(page, scope, modelKey) {
 
 async function uploadSingle(page, pageKey, filePath) {
   const responsePromise = page.waitForResponse(
-    (response) => response.url().includes("/api/evaluate/upload") && response.request().method() === "POST",
+    (response) => response.url().includes("/api/evaluate/upload-task") && response.request().method() === "POST",
     { timeout: 120000 },
   );
   await page.locator(`[data-single-upload-card="${pageKey}"]`).click();
@@ -151,7 +151,7 @@ async function uploadCompareGroup(page, pageKey, groupKey, filePath) {
 
 async function startCompare(page, pageKey) {
   const responsePromise = page.waitForResponse(
-    (response) => response.url().includes("/api/evaluate/compare-upload") && response.request().method() === "POST",
+    (response) => response.url().includes("/api/evaluate/compare-upload-task") && response.request().method() === "POST",
     { timeout: 180000 },
   );
   await page.locator(`[data-compare-start-ready="${pageKey}"]`).click();
@@ -212,17 +212,18 @@ async function expectHistoryDetailAlert(page, card, expectedTexts) {
   await dialog.dismiss();
 }
 
-async function expectSingleUploadError(page, pageKey, filePath, expectedText) {
+async function expectSingleUploadError(page, pageKey, filePath, expectedText, options = {}) {
+  const responseStatus = options.responseStatus ?? 200;
   const responsePromise = page.waitForResponse(
-    (response) => response.url().includes("/api/evaluate/upload") && response.request().method() === "POST",
+    (response) => response.url().includes("/api/evaluate/upload-task") && response.request().method() === "POST",
     { timeout: 120000 },
   );
   await page.locator(`[data-single-upload-card="${pageKey}"]`).click();
   await singleFileInput(page, pageKey).setInputFiles(filePath);
   const response = await responsePromise;
-  expect(response.status()).toBe(400);
+  expect(response.status()).toBe(responseStatus);
   const errorPanel = page.locator(`[data-state-panel="${pageKey}-single-error"]`);
-  await expect(errorPanel).toBeVisible();
+  await expect(errorPanel).toBeVisible({ timeout: 120000 });
   await expect(errorPanel.locator("[data-error-reason]")).toContainText(expectedText);
 }
 
@@ -386,13 +387,16 @@ test.describe("真实后端 E2E：历史页", () => {
     await uploadSingle(page, "eval", formatFixture("format_matrix.wav"));
     await openHistory(page);
 
-    const firstCard = page.locator("[data-history-stack] .timeline-card").first();
-    await expect(firstCard).toContainText("纯人声评测");
-    await expect(firstCard).toContainText("format_matrix.wav");
-    await expect(firstCard).toContainText("DNSMOS");
-    await expect(firstCard).toContainText("单文件");
+    const card = page
+      .locator("[data-history-stack] .timeline-card")
+      .filter({ hasText: "纯人声评测" })
+      .filter({ hasText: "format_matrix.wav" })
+      .filter({ hasText: "单文件" })
+      .first();
+    await expect(card).toBeVisible();
+    await expect(card).toContainText("DNSMOS");
 
-    await expectHistoryDetailAlert(page, firstCard, ["纯人声评测", "DNSMOS", "single", "format_matrix.wav"]);
+    await expectHistoryDetailAlert(page, card, ["纯人声评测", "DNSMOS", "single", "format_matrix.wav"]);
   });
 
   test("历史页记录真实对比任务并可查看详情", async ({ page }) => {
@@ -510,6 +514,8 @@ test.describe("真实后端 E2E：设置页", () => {
     await expect(page.locator('[data-setting-value="export-format"]')).toContainText("CSV");
 
     await uploadSingle(page, "eval", formatFixture("format_matrix.wav"));
+    await expect(page.locator('[data-page="eval"] [data-result-area="eval-single"]')).toBeVisible({ timeout: 120000 });
+    await expect(page.locator('[data-page="eval"] .progress-label').first()).toContainText(/完成/);
     const downloadPromise = page.waitForEvent("download");
     await page.locator('[data-export-trigger="eval"]').click();
     const download = await downloadPromise;
@@ -525,7 +531,7 @@ test.describe("真实后端 E2E：错误态", () => {
   });
 
   test("错误态空文件上传展示用户可见错误", async ({ page }) => {
-    await expectSingleUploadError(page, "eval", errorFixture("empty_upload.wav"), "The uploaded file is empty.");
+    await expectSingleUploadError(page, "eval", errorFixture("empty_upload.wav"), "The uploaded file is empty.", { responseStatus: 400 });
   });
 
   test("错误态无效音频上传展示用户可见错误", async ({ page }) => {

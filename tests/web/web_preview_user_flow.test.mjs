@@ -44,7 +44,69 @@ function createFetch(fetchMap) {
   return fetch;
 }
 
+function normalizeTaskFetchMap(fetchMap) {
+  const normalized = { ...fetchMap };
+  if (fetchMap["/api/evaluate/upload"] && !normalized["/api/evaluate/upload-task"]) {
+    const response = fetchMap["/api/evaluate/upload"];
+    let uploadCall = null;
+    normalized["/api/evaluate/upload-task"] = response?.ok === false
+      ? response
+      : ({ options, calls }) => {
+          uploadCall = { options, calls };
+          return buildJsonResponse({ task_id: "task-single-auto" });
+        };
+    normalized["/api/evaluate/tasks/task-single-auto"] = async () => {
+      const payload = await resolveJsonPayload(response, uploadCall);
+      return buildJsonResponse({
+        id: "task-single-auto",
+        status: "finished",
+        percent: 100,
+        label: "评测完成",
+        result: payload,
+        error: null,
+        events: [],
+      });
+    };
+  }
+  if (fetchMap["/api/evaluate/compare-upload"] && !normalized["/api/evaluate/compare-upload-task"]) {
+    const response = fetchMap["/api/evaluate/compare-upload"];
+    let uploadCall = null;
+    normalized["/api/evaluate/compare-upload-task"] = response?.ok === false
+      ? response
+      : ({ options, calls }) => {
+          uploadCall = { options, calls };
+          return buildJsonResponse({ task_id: "task-compare-auto" });
+        };
+    normalized["/api/evaluate/tasks/task-compare-auto"] = async () => {
+      const payload = await resolveJsonPayload(response, uploadCall);
+      const count = Array.isArray(payload?.items) ? payload.items.length : 0;
+      return buildJsonResponse({
+        id: "task-compare-auto",
+        status: "finished",
+        percent: 100,
+        label: `对比完成 · ${count}/${count} 文件完成`,
+        result: payload,
+        error: null,
+        events: [],
+      });
+    };
+  }
+  return normalized;
+}
+
+async function resolveJsonPayload(value, call = null) {
+  if (typeof value === "function") {
+    const response = await value({ url: "", options: call?.options || {}, calls: call?.calls || [] });
+    return resolveJsonPayload(response, call);
+  }
+  if (value && typeof value === "object" && typeof value.json === "function") {
+    return value.json();
+  }
+  return value;
+}
+
 async function bootPreview({ fetchMap }) {
+  const normalizedFetchMap = normalizeTaskFetchMap(fetchMap);
   const effectiveFetchMap = {
     "/api/settings": {
       default_eval_model: "dnsmos",
@@ -52,7 +114,7 @@ async function bootPreview({ fetchMap }) {
       trace: true,
       compare_default: "free",
     },
-    ...fetchMap,
+    ...normalizedFetchMap,
   };
   const html = fs.readFileSync(htmlPath, "utf8");
   const dom = new JSDOM(html, {
@@ -127,9 +189,9 @@ async function bootPreview({ fetchMap }) {
       const file = new window.File(["audio"], fileName, { type: fileName.endsWith(".mov") ? "video/quicktime" : "audio/wav" });
       setFiles(input, [file]);
       input.dispatchEvent(new window.Event("change", { bubbles: true }));
-      await waitFor(window, () => trackedFetch.calls.some((call) => call.url === "/api/evaluate/upload"), "single-file upload fetch");
+      await waitFor(window, () => trackedFetch.calls.some((call) => call.url === "/api/evaluate/upload-task"), "single-file upload fetch");
       await waitFor(window, () => {
-        const method = trackedFetch.calls.filter((call) => call.url === "/api/evaluate/upload").at(-1)?.options?.method;
+        const method = trackedFetch.calls.filter((call) => call.url === "/api/evaluate/upload-task").at(-1)?.options?.method;
         return method === "POST";
       }, "single-file upload POST");
       if (!waitForCompletion) return;
@@ -140,7 +202,7 @@ async function bootPreview({ fetchMap }) {
         const errorPanel = window.document.querySelector(`[data-page="${page}"] [data-state-panel]`);
         if (errorPanel && errorPanel.style.display !== "none") return true;
         return false;
-      }, `rendered single-file result for ${page}`);
+      }, `rendered single-file result for ${page}`, 1500);
     },
     async openCompare(kind) {
       await this.click(`[data-scene-trigger="${kind}:compare"]`);
@@ -149,8 +211,11 @@ async function bootPreview({ fetchMap }) {
       }, `open compare scene for ${kind}`);
     },
     async addCompareGroup(kind) {
-      await this.click(`[data-add-group="${kind}"]`);
-      await waitFor(window, () => window.document.querySelectorAll(`[data-group-builder="${kind}"] .group-card`).length >= 3, `add compare group for ${kind}`);
+      const selector = window.document.querySelector(`[data-add-group="${kind}"]`)
+        ? `[data-add-group="${kind}"]`
+        : `[data-compare-add-group="${kind}"]`;
+      await this.click(selector);
+      await waitFor(window, () => window.document.querySelector(`[data-compare-upload-group="${kind}-C"]`), `add compare group for ${kind}`);
     },
     async uploadCompare(kind, filesByGroup, options = {}) {
       const startBtn = window.document.querySelector(`[data-compare-start="${kind}"]`) || window.document.querySelector(`[data-compare-start-ready="${kind}"]`);
@@ -178,14 +243,13 @@ async function bootPreview({ fetchMap }) {
       }
       if (options.start === false) return;
       if (startBtn) startBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-      await waitFor(window, () => trackedFetch.calls.some((call) => call.url === "/api/evaluate/compare-upload"), `${kind} compare upload fetch`);
+      await waitFor(window, () => trackedFetch.calls.some((call) => call.url === "/api/evaluate/compare-upload-task"), `${kind} compare upload fetch`);
       await waitFor(window, () => {
-        const method = trackedFetch.calls.filter((call) => call.url === "/api/evaluate/compare-upload").at(-1)?.options?.method;
+        const method = trackedFetch.calls.filter((call) => call.url === "/api/evaluate/compare-upload-task").at(-1)?.options?.method;
         return method === "POST";
       }, `${kind} compare upload POST`);
-      const firstFile = Object.values(filesByGroup)[0];
       await waitFor(window, () => {
-        return query(`[data-compare-ranking="${kind}"] .ranking-list`).textContent?.includes(firstFile);
+        return query(`[data-compare-ranking="${kind}"] .ranking-list`).textContent?.trim().length > 0;
       }, `rendered compare ranking for ${kind}`);
     },
     text(selector) {
@@ -540,6 +604,34 @@ function buildDnsmosComparePayload() {
   };
 }
 
+function buildDnsmosComparePayloadThreeFiles() {
+  const payload = buildDnsmosComparePayload();
+  return {
+    ...payload,
+    items: [
+      ...payload.items,
+      {
+        ...payload.items[0],
+        key: "C",
+        file_path: "c.wav",
+        rank: 3,
+        delta_from_base: -0.8,
+        task: {
+          ...payload.items[0].task,
+          file_path: "c.wav",
+          model: {
+            ...payload.items[0].task.model,
+            result: {
+              ...payload.items[0].task.model.result,
+              file_path: "c.wav",
+            },
+          },
+        },
+      },
+    ],
+  };
+}
+
 function buildNisqaComparePayload() {
   return {
     base_key: "A",
@@ -653,8 +745,8 @@ test("speech single-file dnsmos flow renders preview-aligned result blocks", asy
   try {
     await app.uploadSingle("eval", "demo.wav");
 
-    assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/upload"), true);
-    const uploadCall = app.fetchCalls.filter((call) => call.url === "/api/evaluate/upload").at(-1);
+    assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/upload-task"), true);
+    const uploadCall = app.fetchCalls.filter((call) => call.url === "/api/evaluate/upload-task").at(-1);
     assert.equal(typeof uploadCall?.options?.headers?.["X-Request-Id"], "string");
     assert.equal(uploadCall?.options?.headers?.["X-Request-Id"].startsWith("req_eval_single_"), true);
     assert.equal(app.text("[data-eval-file-summary]"), "12.3s · 16000Hz · Mono · 当前模型 DNSMOS");
@@ -682,7 +774,7 @@ test("speech single-file nisqa flow renders OVRL NOI DIS COL LOUD and supports d
     await app.click('[data-model-scope="eval"][data-model-key="nisqa"]');
     await app.uploadSingle("eval", "nisqa_sample.wav");
 
-    assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/upload"), true);
+    assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/upload-task"), true);
     assert.equal(app.text("[data-eval-file-summary]"), "18.4s · 48000Hz · Stereo · 当前模型 NISQA");
     assert.equal(app.text("[data-eval-trace]"), "原始文件 → 转单声道 → 保持 48kHz → 送入 NISQA");
     assert.deepEqual(app.texts("[data-eval-model-grid] .score-card .label"), ["整体质量 · OVRL", "噪声感知 · NOI", "连续性 · DIS", "染色感 · COL", "响度 · LOUD"]);
@@ -712,7 +804,7 @@ test("analysis single-file audiobox flow renders PQ CE CU PC and supports detail
     await app.click('[data-page="analysis"]');
     await app.uploadSingle("analysis", "mix.mov");
 
-    assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/upload"), true);
+    assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/upload-task"), true);
     assert.equal(app.text("[data-analysis-file-summary]"), "31.2s · 48000Hz · Mono · 当前模型 AudioBox Aesthetics");
     assert.equal(app.text("[data-analysis-advice]"), "建议先整理峰值和响度，再复核内容完成度。");
     assert.equal(app.text("[data-analysis-trace]"), "原始视频 → 抽取音轨 → 保持 48kHz → 送入 AudioBox Aesthetics");
@@ -747,8 +839,8 @@ test("speech compare free mode renders recommended version and ranking", async (
       B: "b.wav",
     });
 
-    assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/compare-upload"), true);
-    const compareCall = app.fetchCalls.filter((call) => call.url === "/api/evaluate/compare-upload").at(-1);
+    assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/compare-upload-task"), true);
+    const compareCall = app.fetchCalls.filter((call) => call.url === "/api/evaluate/compare-upload-task").at(-1);
     assert.equal(typeof compareCall?.options?.headers?.["X-Request-Id"], "string");
     assert.equal(compareCall?.options?.headers?.["X-Request-Id"].startsWith("req_eval_compare_"), true);
     assert.equal(app.text('[data-mode-root="eval"] .mode-chip.active'), "自由对比");
@@ -824,7 +916,7 @@ test("speech compare nisqa flow keeps OVRL NOI DIS COL LOUD in rendered output",
       B: "nisqa_b.wav",
     });
 
-    assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/compare-upload"), true);
+    assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/compare-upload-task"), true);
     assert.equal(app.text('[data-mode-root="eval"] .mode-chip.active'), "自由对比");
     assert.match(app.text('[data-compare-summary="eval"] strong'), /推荐版本 B/);
     assert.equal(app.text('[data-compare-table="eval"] [data-compare-model-tag="eval"]'), "模型: NISQA");
@@ -858,7 +950,7 @@ test("analysis compare flow renders AudioBox summary ranking and detailed pipeli
       B: "master_v2.mov",
     });
 
-    assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/compare-upload"), true);
+    assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/compare-upload-task"), true);
     assert.equal(app.text('[data-mode-root="analysis"] .mode-chip.active'), "自由对比");
     assert.match(app.text('[data-compare-summary="analysis"] strong'), /推荐版本 B/);
     assert.equal(app.text('[data-compare-summary="analysis"] .compare-reason').includes("综合表现更稳"), true);
@@ -1244,6 +1336,78 @@ test("single upload flow reaches done state and shows progress stages", async ()
     const progressPanel = app.document.querySelector('[data-page="eval"] [data-scene="single"] .progress-panel');
     assert.ok(progressPanel, "progress panel exists");
     assert.equal(progressPanel.classList.contains("done"), true, "progress panel has done class");
+  } finally {
+    await app.close();
+  }
+});
+
+test("single upload renders backend task progress without fake animation", async () => {
+  const statuses = [
+    { id: "task-single", status: "running", percent: 25, label: "预处理中", result: null, error: null, events: [] },
+    { id: "task-single", status: "running", percent: 60, label: "模型评测完成", result: null, error: null, events: [] },
+    { id: "task-single", status: "finished", percent: 100, label: "评测完成", result: buildDnsmosSinglePayload(), error: null, events: [] },
+  ];
+  let statusIndex = 0;
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": [],
+      "/api/evaluate/upload-task": buildJsonResponse({ task_id: "task-single" }),
+      "/api/evaluate/tasks/task-single": () => {
+        const status = statuses[Math.min(statusIndex, statuses.length - 1)];
+        statusIndex += 1;
+        return buildJsonResponse(status);
+      },
+    },
+  });
+  try {
+    const progressLog = app.captureTextAssignments('[data-page="eval"] [data-scene="single"] .progress-label');
+    await app.uploadSingle("eval", "demo.wav");
+    progressLog.disconnect();
+
+    assertOrderedIncludes(progressLog.values, ["预处理中", "模型评测完成", "评测完成"]);
+    assert.equal(progressLog.values.slice(1).some((value) => value === "0%"), false);
+    assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/upload-task"), true);
+  } finally {
+    await app.close();
+  }
+});
+
+test("compare upload renders file-level backend task progress", async () => {
+  const statuses = [
+    { id: "task-compare", status: "running", percent: 45, label: "A 文件信号分析完成 · 1/3 文件完成", result: null, error: null, events: [] },
+    { id: "task-compare", status: "running", percent: 70, label: "B 文件信号分析完成 · 2/3 文件完成", result: null, error: null, events: [] },
+    { id: "task-compare", status: "finished", percent: 100, label: "对比完成 · 3/3 文件完成", result: buildDnsmosComparePayloadThreeFiles(), error: null, events: [] },
+  ];
+  let statusIndex = 0;
+  const app = await bootPreview({
+    fetchMap: {
+      "/api/history": [],
+      "/api/evaluate/compare-upload-task": buildJsonResponse({ task_id: "task-compare" }),
+      "/api/evaluate/tasks/task-compare": () => {
+        const status = statuses[Math.min(statusIndex, statuses.length - 1)];
+        statusIndex += 1;
+        return buildJsonResponse(status);
+      },
+    },
+  });
+  try {
+    await app.openCompare("eval");
+    await app.addCompareGroup("eval");
+    const progressLog = app.captureTextAssignments('[data-page="eval"] [data-scene="compare"] .progress-label');
+    await app.uploadCompare("eval", { A: "a.wav", B: "b.wav", C: "c.wav" });
+
+    await waitFor(
+      app.window,
+      () => app.fetchCalls.filter((call) => call.url === "/api/evaluate/tasks/task-compare").length >= 3,
+      "compare done progress label",
+      2000,
+    );
+    progressLog.disconnect();
+
+    assert.equal(progressLog.values.some((value) => value.startsWith("A 文件信号分析完成")), true);
+    assert.equal(progressLog.values.some((value) => value.startsWith("B 文件信号分析完成")), true);
+    assert.equal(progressLog.values.some((value) => value.includes("对比完成")), true);
+    assert.equal(app.fetchCalls.some((call) => call.url === "/api/evaluate/compare-upload-task"), true);
   } finally {
     await app.close();
   }

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 from uuid import uuid4
 
 from audioqas.logging import get_logger, get_request_id, log_context, set_event
@@ -24,6 +26,12 @@ from audioqas.web.runtime import (
 from audioqas.web.schemas import EvalDomain
 
 logger = get_logger(__name__)
+ProgressCallback = Callable[[dict[str, Any]], None]
+
+
+def _emit_progress(callback: ProgressCallback | None, **event: Any) -> None:
+    if callback:
+        callback(event)
 
 
 @dataclass
@@ -93,6 +101,10 @@ class EvaluationService:
         model_key: str,
         file_path: str,
         include_signal: bool = True,
+        progress_callback: ProgressCallback | None = None,
+        progress_prefix: str | None = None,
+        progress_base: int = 0,
+        progress_span: int = 100,
     ) -> SingleTaskResult:
         with log_context(request_id=self._request_id()):
             configure_preprocessor(
@@ -108,7 +120,31 @@ class EvaluationService:
                     include_signal,
                 )
             model_runner = self._model_runner(domain, model_key)
+            prefix = f"{progress_prefix} " if progress_prefix else ""
+            signal_steps = 3 if include_signal else 2
+
+            def percent(step_index: int) -> int:
+                return min(100, round(progress_base + (progress_span * step_index / signal_steps)))
+
+            _emit_progress(
+                progress_callback,
+                stage="preprocess_started",
+                percent=percent(0),
+                label=f"{prefix}预处理中",
+            )
+            _emit_progress(
+                progress_callback,
+                stage="model_started",
+                percent=percent(0),
+                label=f"{prefix}模型评测中",
+            )
             model_result = model_runner.score(file_path)
+            _emit_progress(
+                progress_callback,
+                stage="model_finished",
+                percent=percent(1),
+                label=f"{prefix}模型评测完成",
+            )
             with set_event("model_result_ready"):
                 logger.debug(
                     "model_result_ready model=%s grade=%s dimensions=%s",
@@ -116,8 +152,21 @@ class EvaluationService:
                     model_result["grade"],
                     sorted(model_result["dimensions"].keys()),
                 )
+            if include_signal:
+                _emit_progress(
+                    progress_callback,
+                    stage="signal_started",
+                    percent=percent(1),
+                    label=f"{prefix}信号分析中",
+                )
             signal_result = self._runners.signal_runner.analyze(file_path) if include_signal else None
             if signal_result is not None:
+                _emit_progress(
+                    progress_callback,
+                    stage="signal_finished",
+                    percent=percent(2),
+                    label=f"{prefix}信号分析完成",
+                )
                 with set_event("signal_result_ready"):
                     logger.debug(
                         "signal_result_ready grade=%s metrics=%s",
@@ -132,6 +181,12 @@ class EvaluationService:
             )
             with set_event("task_finished"):
                 logger.info("task_finished model=%s file=%s", model_key, file_path)
+            _emit_progress(
+                progress_callback,
+                stage="finished",
+                percent=percent(signal_steps),
+                label=f"{prefix}处理完成",
+            )
             return result
 
     def evaluate_batch(
@@ -161,15 +216,22 @@ class EvaluationService:
         groups: list[CompareInputGroup],
         base_key: str | None = None,
         include_signal: bool = True,
+        progress_callback: ProgressCallback | None = None,
     ) -> CompareTaskResult:
+        total_groups = len(groups)
+        per_group_span = 75 / max(total_groups, 1)
         single_results = [
             (group, self.evaluate_single(
                 domain=domain,
                 model_key=model_key,
                 file_path=group.file_path,
                 include_signal=include_signal,
+                progress_callback=progress_callback,
+                progress_prefix=f"{group.key} 文件",
+                progress_base=20 + round(index * per_group_span),
+                progress_span=round(per_group_span),
             ))
-            for group in groups
+            for index, group in enumerate(groups)
         ]
 
         sorted_results = sorted(

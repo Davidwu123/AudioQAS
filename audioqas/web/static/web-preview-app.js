@@ -259,14 +259,12 @@ function uploadWithProgress(url, body, requestId, onProgress) {
       && XMLHttpRequest.prototype.upload !== undefined;
   } catch { /* not a real browser XHR */ }
   if (!hasXHRProgress) {
-    if (onProgress) { onProgress(10); onProgress(50); }
     return fetch(url, { method: "POST", body, headers: { "X-Request-Id": requestId } })
       .then(async (res) => {
         if (!res.ok) {
           const t = typeof res.text === "function" ? await res.text() : String(res.statusText);
           throw new Error(explainUploadError(res.status, t));
         }
-        if (onProgress) onProgress(100);
         return res.json();
       });
   }
@@ -303,11 +301,33 @@ function uploadWithProgress(url, body, requestId, onProgress) {
 }
 
 function setSingleProgress(page, label, width) {
-  const single = document.querySelector(`[data-scene-root="${page}"] [data-scene="single"]`);
-  const progressLabel = single?.querySelector(".progress-label");
-  const progressFill = single?.querySelector(".progress-fill");
-  if (progressLabel) progressLabel.textContent = label;
-  if (progressFill) progressFill.style.width = width;
+  setProgressForScene(page, "single", label, width);
+}
+
+function setProgressForScene(page, scene, label, widthOrPercent) {
+  const root = document.querySelector(`[data-scene-root="${page}"] [data-scene="${scene}"]`);
+  const numeric = typeof widthOrPercent === "number"
+    ? widthOrPercent
+    : Number.parseInt(String(widthOrPercent || "0"), 10);
+  const percent = Math.max(0, Math.min(100, Number.isFinite(numeric) ? numeric : 0));
+  root?.querySelectorAll(".progress-label").forEach((progressLabel) => {
+    progressLabel.textContent = label;
+  });
+  root?.querySelectorAll(".progress-fill").forEach((progressFill) => {
+    progressFill.style.width = `${percent}%`;
+  });
+}
+
+async function pollEvaluationTask(taskId, onStatus) {
+  while (true) {
+    const response = await fetch(`/api/evaluate/tasks/${taskId}`);
+    if (!response.ok) throw new Error(`Task status failed: ${response.status}`);
+    const payload = await response.json();
+    onStatus(payload);
+    if (payload.status === "finished") return payload.result;
+    if (payload.status === "failed") throw new Error(explainUploadError(400, payload.error || "Task failed"));
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
 }
 
 function explainUploadError(status, bodyText) {
@@ -337,6 +357,15 @@ function explainUploadError(status, bodyText) {
     }
     bodyText = code || JSON.stringify(bodyText);
   }
+  if (bodyText.includes("empty_upload")) {
+    return "The uploaded file is empty.";
+  }
+  if (bodyText.includes("empty_audio")) {
+    return "The uploaded file contains no audio samples.";
+  }
+  if (bodyText.includes("invalid_audio_file")) {
+    return "The uploaded file could not be decoded as a supported audio/video file.";
+  }
   if (bodyText.includes("mono_convert_disabled")) {
     return "自动转单声道已关闭，当前文件需要先转单声道后才能评测。";
   }
@@ -357,7 +386,7 @@ function explainUploadError(status, bodyText) {
 function markSingleLoading(page, file) {
   runtimeState.single[page] = { file, status: "running", result: null, error: null };
   const requestId = runtimeState.requests[page]?.single;
-  setSingleProgress(page, requestId ? `上传中 10% · ${requestId}` : "上传中 10%", "10%");
+  setSingleProgress(page, requestId ? `上传中 · ${requestId}` : "上传中", "0%");
   renderStatePanels(page);
 }
 
@@ -381,15 +410,19 @@ async function evaluateUploadedFile(page, file) {
   setSingleProgress(page, `上传中 · ${requestId}`, "0%");
 
   try {
-    const payload = await uploadWithProgress("/api/evaluate/upload", form, requestId, (pct) => {
+    const task = await uploadWithProgress("/api/evaluate/upload-task", form, requestId, (pct) => {
       const label = pct < 100 ? `上传中 ${pct}% · ${requestId}` : `上传完成 · ${requestId}`;
-      setSingleProgress(page, label, `${Math.min(pct, 50)}%`);
+      setSingleProgress(page, label, Math.min(pct, 20));
+    });
+    const payload = await pollEvaluationTask(task.task_id, (taskStatus) => {
+      if (runtimeState.requests[page].single !== requestId) return;
+      const label = `${taskStatus.label || "处理中"} · ${requestId}`;
+      setSingleProgress(page, label, taskStatus.percent);
     });
     if (runtimeState.requests[page].single !== requestId) return;
-    setSingleProgress(page, `模型评测中 · ${requestId}`, "55%");
     runtimeState.single[page] = { file, status: "done", result: payload, error: null };
     applySingleEvaluation(page, payload, file.name);
-    setSingleProgress(page, page === "eval" ? "评测完成 100%" : "分析完成 100%", "100%");
+    setSingleProgress(page, page === "eval" ? "评测完成 100%" : "分析完成 100%", 100);
     const progressPanel = document.querySelector(`[data-scene-root="${page}"] [data-scene="single"] .progress-panel`);
     if (progressPanel) progressPanel.classList.add("done");
     renderStatePanels(page);
@@ -415,10 +448,7 @@ async function evaluateCompareUpload(kind) {
 
   const sceneRoot = document.querySelector(`[data-scene-root="${kind}"]`);
   const compare = sceneRoot?.querySelector('[data-scene="compare"]');
-  const progressLabel = compare?.querySelector(".progress-label");
-  const progressFill = compare?.querySelector(".progress-fill");
-  if (progressLabel) progressLabel.textContent = `上传中 · ${requestId}`;
-  if (progressFill) progressFill.style.width = "0%";
+  setProgressForScene(kind, "compare", `上传中 · ${requestId}`, 0);
 
   const multipart = new FormData();
   multipart.append("domain", domain);
@@ -431,20 +461,22 @@ async function evaluateCompareUpload(kind) {
   }
 
   try {
-    const payload = await uploadWithProgress("/api/evaluate/compare-upload", multipart, requestId, (pct) => {
+    const task = await uploadWithProgress("/api/evaluate/compare-upload-task", multipart, requestId, (pct) => {
       const label = pct < 100 ? `上传中 ${pct}% · ${requestId}` : `上传完成 · ${requestId}`;
-      if (progressLabel) progressLabel.textContent = label;
-      if (progressFill) progressFill.style.width = `${Math.min(pct, 50)}%`;
+      setProgressForScene(kind, "compare", label, Math.min(pct, 20));
     });
-    if (progressLabel) progressLabel.textContent = `对比处理中 · ${requestId}`;
-    if (progressFill) progressFill.style.width = "55%";
+    const payload = await pollEvaluationTask(task.task_id, (taskStatus) => {
+      if (runtimeState.requests[kind].compare !== requestId) return;
+      const label = `${taskStatus.label || "对比处理中"} · ${requestId}`;
+      setProgressForScene(kind, "compare", label, taskStatus.percent);
+    });
+    if (runtimeState.requests[kind].compare !== requestId) return;
     runtimeState.compare.results[kind] = payload;
     runtimeState.compare.status[kind] = "done";
     render();
     renderCompareFromRuntime(kind, payload);
-    if (progressLabel) progressLabel.textContent = kind === "eval" ? "对比评测完成 100%" : "对比分析完成 100%";
-    if (progressFill) progressFill.style.width = "100%";
-    const progressPanel = compare?.querySelector(".progress-panel");
+    setProgressForScene(kind, "compare", kind === "eval" ? "对比评测完成 100%" : "对比分析完成 100%", 100);
+    const progressPanel = document.querySelector(`[data-scene-root="${kind}"] [data-scene="compare"] .progress-panel`);
     if (progressPanel) progressPanel.classList.add("done");
   } catch (error) {
     console.error(error);
@@ -1418,29 +1450,6 @@ function render() {
   renderHistory();
   renderSettings();
   renderTraceVisibility();
-  animateVisibleProgress();
-}
-
-function animateVisibleProgress() {
-  document.querySelectorAll(".page.active .scenario.active .progress-fill").forEach((fill) => {
-    const panel = fill.closest(".progress-panel");
-    if (panel && panel.classList.contains("done")) return;
-    const label = panel?.querySelector(".progress-label");
-    const styleWidth = fill.style.width || "0%";
-    const target = Number.parseInt(styleWidth, 10) || 0;
-    fill.style.width = "0%";
-    if (label) label.textContent = "0%";
-    const duration = 900;
-    const start = performance.now();
-    function tick(now) {
-      const progress = Math.min((now - start) / duration, 1);
-      const current = Math.round(target * progress);
-      fill.style.width = `${current}%`;
-      if (label) label.textContent = `${current}%`;
-      if (progress < 1) requestAnimationFrame(tick);
-    }
-    requestAnimationFrame(tick);
-  });
 }
 
 document.querySelectorAll(".nav-btn").forEach((el) => {

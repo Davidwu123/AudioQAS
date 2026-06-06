@@ -96,6 +96,30 @@ def test_evaluate_single_without_signal():
     assert result.signal is None
 
 
+def test_evaluate_single_reports_observable_progress_stages():
+    service = make_service()
+    events = []
+
+    result = service.evaluate_single(
+        domain=EvalDomain.SPEECH,
+        model_key="dnsmos",
+        file_path="speech.wav",
+        include_signal=True,
+        progress_callback=lambda event: events.append(event),
+    )
+
+    assert result.model.model_key == "dnsmos"
+    assert [event["stage"] for event in events] == [
+        "preprocess_started",
+        "model_started",
+        "model_finished",
+        "signal_started",
+        "signal_finished",
+        "finished",
+    ]
+    assert events[-1]["percent"] == 100
+
+
 def test_unknown_model_raises():
     service = make_service()
     try:

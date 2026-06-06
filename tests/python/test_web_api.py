@@ -2,6 +2,7 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
+import time
 
 from fastapi.testclient import TestClient
 
@@ -33,7 +34,22 @@ def _with_real_preprocess_dir(tmp_path, monkeypatch) -> None:
 
 
 class FakeEvaluationService:
-    def evaluate_single(self, *, domain, model_key, file_path, include_signal=True):
+    def evaluate_single(
+        self,
+        *,
+        domain,
+        model_key,
+        file_path,
+        include_signal=True,
+        progress_callback=None,
+        progress_prefix=None,
+        progress_base=0,
+        progress_span=100,
+    ):
+        prefix = f"{progress_prefix} " if progress_prefix else ""
+        if progress_callback:
+            progress_callback({"stage": "preprocess_started", "percent": progress_base, "label": f"{prefix}预处理中"})
+            progress_callback({"stage": "model_started", "percent": progress_base, "label": f"{prefix}模型评测中"})
         model_result = {
             "eval_type": "mos",
             "model_name": "DNSMOS" if model_key == "dnsmos" else "NISQA",
@@ -49,8 +65,12 @@ class FakeEvaluationService:
             "preprocessed": False,
             "preprocessed_path": file_path,
         }
+        if progress_callback:
+            progress_callback({"stage": "model_finished", "percent": progress_base + round(progress_span / 3), "label": f"{prefix}模型评测完成"})
         signal_result = None
         if include_signal:
+            if progress_callback:
+                progress_callback({"stage": "signal_started", "percent": progress_base + round(progress_span / 3), "label": f"{prefix}信号分析中"})
             signal_result = {
                 "eval_type": "analysis",
                 "model_name": "AudioAnalyzer",
@@ -65,6 +85,10 @@ class FakeEvaluationService:
                 "preprocessed": False,
                 "preprocessed_path": file_path,
             }
+            if progress_callback:
+                progress_callback({"stage": "signal_finished", "percent": progress_base + round(progress_span * 2 / 3), "label": f"{prefix}信号分析完成"})
+        if progress_callback:
+            progress_callback({"stage": "finished", "percent": progress_base + progress_span, "label": f"{prefix}处理完成"})
         return SingleTaskResult(
             domain=domain,
             file_path=file_path,
@@ -84,14 +108,19 @@ class FakeEvaluationService:
         )
         return BatchTaskResult(domain=domain, model_key=model_key, items=items)
 
-    def evaluate_compare(self, *, domain, model_key, groups, base_key=None, include_signal=True):
+    def evaluate_compare(self, *, domain, model_key, groups, base_key=None, include_signal=True, progress_callback=None):
         items = []
+        per_group_span = round(75 / max(len(groups), 1))
         for index, group in enumerate(groups, start=1):
             task = self.evaluate_single(
                 domain=domain,
                 model_key=model_key,
                 file_path=group.file_path,
                 include_signal=include_signal,
+                progress_callback=progress_callback,
+                progress_prefix=f"{group.key} 文件",
+                progress_base=20 + ((index - 1) * per_group_span),
+                progress_span=per_group_span,
             )
             items.append(
                 CompareGroupResult(
@@ -189,6 +218,19 @@ class FakeHistoryStore:
 
 def make_client() -> TestClient:
     return TestClient(create_app(evaluation_service=FakeEvaluationService(), history_store=FakeHistoryStore()))
+
+
+def wait_for_task(client: TestClient, task_id: str, timeout: float = 3.0) -> dict:
+    deadline = time.monotonic() + timeout
+    last_status = None
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/evaluate/tasks/{task_id}")
+        assert response.status_code == 200
+        last_status = response.json()
+        if last_status["status"] in {"finished", "failed"}:
+            return last_status
+        time.sleep(0.05)
+    raise AssertionError(f"Task {task_id} did not finish in time: {last_status}")
 
 
 def _wav_with_zero_sizes_and_pcm_payload(sample_rate: int = 16000) -> bytes:
@@ -504,6 +546,86 @@ def test_evaluate_compare_upload_endpoint():
     assert payload["domain"] == "speech"
     assert payload["base_key"] == "A"
     assert len(payload["items"]) == 2
+
+
+def test_single_upload_task_reports_progress_and_result():
+    client = make_client()
+    response = client.post(
+        "/api/evaluate/upload-task",
+        data={
+            "domain": EvalDomain.SPEECH.value,
+            "model_key": "dnsmos",
+            "include_signal": "true",
+        },
+        files={"file": ("sample.wav", b"fake wav bytes", "audio/wav")},
+        headers={"X-Request-Id": "req_progress_single"},
+    )
+
+    assert response.status_code == 200
+    task_id = response.json()["task_id"]
+    status = wait_for_task(client, task_id)
+
+    assert status["status"] == "finished"
+    assert status["percent"] == 100
+    assert status["result"]["model"]["model_key"] == "dnsmos"
+    assert "preprocess_started" in [event["stage"] for event in status["events"]]
+
+
+def test_compare_upload_task_reports_file_level_progress_and_result():
+    client = make_client()
+    response = client.post(
+        "/api/evaluate/compare-upload-task",
+        data={
+            "domain": EvalDomain.SPEECH.value,
+            "model_key": "dnsmos",
+            "base_key": "A",
+            "include_signal": "true",
+            "keys": ["A", "B", "C"],
+        },
+        files=[
+            ("files", ("a.wav", b"a bytes", "audio/wav")),
+            ("files", ("b.wav", b"b bytes", "audio/wav")),
+            ("files", ("c.wav", b"c bytes", "audio/wav")),
+        ],
+        headers={"X-Request-Id": "req_progress_compare"},
+    )
+
+    assert response.status_code == 200
+    task_id = response.json()["task_id"]
+    status = wait_for_task(client, task_id)
+
+    assert status["status"] == "finished"
+    assert status["percent"] == 100
+    assert len(status["result"]["items"]) == 3
+    labels = [event["label"] for event in status["events"]]
+    assert any("A 文件" in label for label in labels)
+    assert any("B 文件" in label for label in labels)
+    assert any("C 文件" in label for label in labels)
+
+
+def test_single_upload_task_writes_progress_log(tmp_path):
+    from audioqas.logging import setup_logging
+
+    setup_logging(log_dir=tmp_path / "log", level="DEBUG", max_mb=1, backup_count=2)
+    client = make_client()
+
+    response = client.post(
+        "/api/evaluate/upload-task",
+        data={
+            "domain": EvalDomain.SPEECH.value,
+            "model_key": "dnsmos",
+            "include_signal": "true",
+        },
+        files={"file": ("sample.wav", b"fake wav bytes", "audio/wav")},
+        headers={"X-Request-Id": "req_progress_log"},
+    )
+
+    assert response.status_code == 200
+    wait_for_task(client, response.json()["task_id"])
+    text = (tmp_path / "log" / "audioqas.log").read_text(encoding="utf-8")
+    assert "progress_updated" in text
+    assert "percent=" in text
+    assert "req_progress_log" in text
 
 
 def test_real_upload_dnsmos_endpoint_contract(tmp_path, monkeypatch):

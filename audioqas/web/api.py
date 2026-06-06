@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -15,6 +16,7 @@ import soundfile as sf
 from audioqas.logging import get_logger, log_context, set_event
 from audioqas.web.runtime import CompareInputGroup
 from audioqas.web.history_store import default_history_store
+from audioqas.web.progress import ProgressTaskStore
 from audioqas.web.settings_store import default_settings_store
 from audioqas.web.services import WebPreviewService
 from audioqas.web.schemas import EvalDomain
@@ -214,6 +216,8 @@ def create_app(
     static_dir = Path(__file__).resolve().parent / "static"
     upload_dir = Path(__file__).resolve().parents[2] / ".tmp" / "web_uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
+    progress_store = ProgressTaskStore()
+    task_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="audioqas-task")
 
     app.mount("/static-preview", StaticFiles(directory=static_dir), name="static-preview")
 
@@ -236,6 +240,137 @@ def create_app(
                 "stage": "preprocess",
             },
         )
+
+    def _validate_and_store_upload_content(upload: UploadFile, content: bytes, *, empty_message: str) -> str:
+        filename = f"{uuid4().hex[:8]}_{Path(upload.filename or 'upload.bin').name}"
+        target = upload_dir / filename
+        logger.debug("upload_read_complete filename=%s size=%s", upload.filename, len(content))
+        if len(content) > MAX_UPLOAD_SIZE:
+            with set_event("request_failed"):
+                logger.warning(
+                    "request_failed reason=file_too_large size=%s limit=%s filename=%s",
+                    len(content),
+                    MAX_UPLOAD_SIZE,
+                    upload.filename,
+                )
+            raise HTTPException(status_code=413, detail=_file_too_large_detail(MAX_UPLOAD_SIZE))
+        if len(content) == 0:
+            with set_event("request_failed"):
+                logger.warning("request_failed reason=empty_upload filename=%s", upload.filename)
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "empty_upload",
+                    "message": empty_message,
+                    "stage": "upload",
+                },
+            )
+        target.write_bytes(content)
+        with set_event("upload_saved"):
+            logger.info("upload_saved file=%s size=%s", target, len(content))
+        return str(target)
+
+    async def _store_upload_async(upload: UploadFile, *, empty_message: str) -> str:
+        content = await upload.read()
+        return _validate_and_store_upload_content(upload, content, empty_message=empty_message)
+
+    def _progress_callback(task_id: str):
+        def callback(event: dict) -> None:
+            progress_store.update(
+                task_id,
+                status="running",
+                percent=event.get("percent"),
+                label=event.get("label"),
+                detail=event.get("stage"),
+                event=event,
+            )
+            with set_event("progress_updated"):
+                logger.info(
+                    "progress_updated task_id=%s stage=%s percent=%s label=%s",
+                    task_id,
+                    event.get("stage"),
+                    event.get("percent"),
+                    event.get("label"),
+                )
+        return callback
+
+    def _task_error_code(exc: Exception) -> str:
+        if isinstance(exc, ValueError):
+            reason = str(exc)
+            if reason in PREPROCESS_ERROR_MESSAGES:
+                return reason
+        if isinstance(exc, sf.LibsndfileError):
+            return "invalid_audio_file"
+        return str(exc)
+
+    def _mark_task_failed(task_id: str, exc: Exception) -> None:
+        error = _task_error_code(exc)
+        progress_store.update(
+            task_id,
+            status="failed",
+            label="处理失败",
+            error=error,
+            event={"stage": "failed", "label": "处理失败", "error": error},
+        )
+        with set_event("progress_failed"):
+            logger.exception("progress_failed task_id=%s", task_id)
+
+    def _run_single_task(task_id: str, *, domain: EvalDomain, model_key: str, file_path: str, include_signal: bool) -> None:
+        try:
+            _configure_task_service()
+            result = task_service.evaluate_single(
+                domain=domain,
+                model_key=model_key,
+                file_path=file_path,
+                include_signal=include_signal,
+                progress_callback=_progress_callback(task_id),
+            )
+            result_payload = _serialize_single_result(result)
+            if history_store and hasattr(history_store, "add_item"):
+                history_store.add_item(_build_history_item_for_single(result))
+            progress_store.update(
+                task_id,
+                status="finished",
+                percent=100,
+                label="评测完成" if domain == EvalDomain.SPEECH else "分析完成",
+                result=result_payload,
+                event={"stage": "finished", "label": "处理完成"},
+            )
+        except Exception as exc:
+            _mark_task_failed(task_id, exc)
+
+    def _run_compare_task(
+        task_id: str,
+        *,
+        domain: EvalDomain,
+        model_key: str,
+        groups: list[CompareInputGroup],
+        base_key: str | None,
+        include_signal: bool,
+    ) -> None:
+        try:
+            _configure_task_service()
+            result = task_service.evaluate_compare(
+                domain=domain,
+                model_key=model_key,
+                groups=groups,
+                base_key=base_key,
+                include_signal=include_signal,
+                progress_callback=_progress_callback(task_id),
+            )
+            result_payload = _serialize_compare_result(result)
+            if history_store and hasattr(history_store, "add_item"):
+                history_store.add_item(_build_history_item_for_compare(result))
+            progress_store.update(
+                task_id,
+                status="finished",
+                percent=100,
+                label=f"对比完成 · {len(groups)}/{len(groups)} 文件完成",
+                result=result_payload,
+                event={"stage": "finished", "label": "对比完成"},
+            )
+        except Exception as exc:
+            _mark_task_failed(task_id, exc)
 
     @app.get("/")
     def index() -> FileResponse:
@@ -365,6 +500,53 @@ def create_app(
             with set_event("request_finished"):
                 logger.info("request_finished path=/api/evaluate/compare status=200")
             return _serialize_compare_result(result)
+
+    @app.get("/api/evaluate/tasks/{task_id}")
+    def evaluate_task_status(task_id: str) -> dict:
+        snapshot = progress_store.get(task_id)
+        if snapshot is None:
+            raise HTTPException(status_code=404, detail="task not found")
+        return snapshot
+
+    @app.post("/api/evaluate/upload-task")
+    async def evaluate_upload_task(
+        domain: EvalDomain = Form(...),
+        model_key: str = Form(...),
+        include_signal: bool = Form(True),
+        file: UploadFile = File(...),
+        x_request_id: str | None = Header(None),
+    ) -> dict:
+        with log_context(request_id=_new_request_id("upload_single_task", x_request_id), scene="single"):
+            _configure_task_service()
+            with set_event("request_received"):
+                logger.info(
+                    "request_received path=/api/evaluate/upload-task domain=%s model=%s include_signal=%s filename=%s",
+                    domain.value,
+                    model_key,
+                    include_signal,
+                    file.filename,
+                )
+            file_path = await _store_upload_async(file, empty_message="The uploaded file is empty.")
+            task = progress_store.create(scene="single")
+            progress_store.update(
+                task.id,
+                status="running",
+                percent=20,
+                label="上传完成",
+                detail="upload_saved",
+                event={"stage": "upload_saved", "label": "上传完成"},
+            )
+            task_executor.submit(
+                _run_single_task,
+                task.id,
+                domain=domain,
+                model_key=model_key,
+                file_path=file_path,
+                include_signal=include_signal,
+            )
+            with set_event("request_finished"):
+                logger.info("request_finished path=/api/evaluate/upload-task status=200 task_id=%s", task.id)
+            return {"task_id": task.id}
 
     @app.post("/api/evaluate/upload")
     async def evaluate_upload(
@@ -512,6 +694,61 @@ def create_app(
                 with set_event("request_failed"):
                     logger.exception("request_failed path=/api/evaluate/upload-batch reason=unexpected_error")
                 raise
+
+    @app.post("/api/evaluate/compare-upload-task")
+    async def evaluate_compare_upload_task(
+        domain: EvalDomain = Form(...),
+        model_key: str = Form(...),
+        base_key: str | None = Form(None),
+        include_signal: bool = Form(True),
+        keys: list[str] = Form(...),
+        files: list[UploadFile] = File(...),
+        x_request_id: str | None = Header(None),
+    ) -> dict:
+        with log_context(request_id=_new_request_id("upload_compare_task", x_request_id), scene="compare"):
+            _configure_task_service()
+            with set_event("request_received"):
+                logger.info(
+                    "request_received path=/api/evaluate/compare-upload-task domain=%s model=%s files=%s include_signal=%s base_key=%s",
+                    domain.value,
+                    model_key,
+                    len(files),
+                    include_signal,
+                    base_key,
+                )
+            if len(keys) != len(files):
+                with set_event("request_failed"):
+                    logger.warning(
+                        "request_failed reason=mismatched_keys_files keys=%s files=%s",
+                        len(keys),
+                        len(files),
+                    )
+                raise HTTPException(status_code=400, detail=f"Mismatched keys ({len(keys)}) and files ({len(files)})")
+            groups: list[CompareInputGroup] = []
+            for key, upload in zip(keys, files, strict=False):
+                file_path = await _store_upload_async(upload, empty_message=f"Uploaded file for group {key} is empty.")
+                groups.append(CompareInputGroup(key=key, file_path=file_path))
+            task = progress_store.create(scene="compare")
+            progress_store.update(
+                task.id,
+                status="running",
+                percent=20,
+                label=f"上传完成 · {len(groups)} 个文件已接收",
+                detail="upload_saved",
+                event={"stage": "upload_saved", "label": "上传完成"},
+            )
+            task_executor.submit(
+                _run_compare_task,
+                task.id,
+                domain=domain,
+                model_key=model_key,
+                groups=groups,
+                base_key=base_key,
+                include_signal=include_signal,
+            )
+            with set_event("request_finished"):
+                logger.info("request_finished path=/api/evaluate/compare-upload-task status=200 task_id=%s", task.id)
+            return {"task_id": task.id}
 
     @app.post("/api/evaluate/compare-upload")
     async def evaluate_compare_upload(

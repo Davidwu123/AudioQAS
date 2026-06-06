@@ -265,6 +265,14 @@ def test_app_upload_with_progress_falls_back_to_fetch():
     assert "fetch(url, { method: \"POST\"" in text
 
 
+def test_app_does_not_use_fake_visible_progress_animation():
+    text = APP_PATH.read_text(encoding="utf-8")
+    assert "animateVisibleProgress" not in text
+    assert "onProgress(10); onProgress(50);" not in text
+    assert "/api/evaluate/upload-task" in text
+    assert "/api/evaluate/compare-upload-task" in text
+
+
 def test_app_compare_upload_sets_ready_status():
     text = APP_PATH.read_text(encoding="utf-8")
     assert 'runtimeState.compare.status[kind] = "ready"' in text

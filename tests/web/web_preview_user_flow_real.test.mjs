@@ -43,8 +43,15 @@ function createFetch(fetchMap) {
     }
     const value = fetchMap[key];
     if (typeof value === "function") {
-      return value({ url: key, options, calls });
+      return normalizeFetchResponse(await value({ url: key, options, calls }));
     }
+    return normalizeFetchResponse(value);
+  };
+  fetch.calls = calls;
+  return fetch;
+}
+
+function normalizeFetchResponse(value) {
     if (value && typeof value === "object" && typeof value.json === "function") {
       if (!value.text) value.text = async () => JSON.stringify(await value.json());
       return value;
@@ -59,12 +66,62 @@ function createFetch(fetchMap) {
         return JSON.stringify(value);
       },
     };
-  };
-  fetch.calls = calls;
-  return fetch;
+}
+
+function normalizeTaskFetchMap(fetchMap) {
+  const normalized = { ...fetchMap };
+  if (fetchMap["/api/evaluate/upload"] && !normalized["/api/evaluate/upload-task"]) {
+    const response = fetchMap["/api/evaluate/upload"];
+    normalized["/api/evaluate/upload-task"] = response?.ok === false
+      ? response
+      : { task_id: "task-single-real" };
+    normalized["/api/evaluate/tasks/task-single-real"] = async () => {
+      const payload = await resolveJsonPayload(response);
+      return {
+        id: "task-single-real",
+        status: "finished",
+        percent: 100,
+        label: "评测完成",
+        result: payload,
+        error: null,
+        events: [],
+      };
+    };
+  }
+  if (fetchMap["/api/evaluate/compare-upload"] && !normalized["/api/evaluate/compare-upload-task"]) {
+    const response = fetchMap["/api/evaluate/compare-upload"];
+    normalized["/api/evaluate/compare-upload-task"] = response?.ok === false
+      ? response
+      : { task_id: "task-compare-real" };
+    normalized["/api/evaluate/tasks/task-compare-real"] = async () => {
+      const payload = await resolveJsonPayload(response);
+      const count = Array.isArray(payload?.items) ? payload.items.length : 0;
+      return {
+        id: "task-compare-real",
+        status: "finished",
+        percent: 100,
+        label: `对比完成 · ${count}/${count} 文件完成`,
+        result: payload,
+        error: null,
+        events: [],
+      };
+    };
+  }
+  return normalized;
+}
+
+async function resolveJsonPayload(value) {
+  if (typeof value === "function") {
+    return resolveJsonPayload(await value({ url: "", options: {}, calls: [] }));
+  }
+  if (value && typeof value === "object" && typeof value.json === "function") {
+    return value.json();
+  }
+  return value;
 }
 
 async function bootPreview({ fetchMap }) {
+  const normalizedFetchMap = normalizeTaskFetchMap(fetchMap);
   const effectiveFetchMap = {
     "/api/settings": {
       default_eval_model: "dnsmos",
@@ -72,7 +129,7 @@ async function bootPreview({ fetchMap }) {
       trace: true,
       compare_default: "free",
     },
-    ...fetchMap,
+    ...normalizedFetchMap,
   };
   const html = fs.readFileSync(htmlPath, "utf8");
   const dom = new JSDOM(html, {
@@ -149,7 +206,7 @@ async function bootPreview({ fetchMap }) {
       const file = new window.File(["audio"], fileName, { type: fileName.endsWith(".mov") ? "video/quicktime" : "audio/wav" });
       setFiles(input, [file]);
       input.dispatchEvent(new window.Event("change", { bubbles: true }));
-      await waitFor(window, () => trackedFetch.calls.some((call) => call.url === "/api/evaluate/upload"), `single upload ${page}`);
+      await waitFor(window, () => trackedFetch.calls.some((call) => call.url === "/api/evaluate/upload-task"), `single upload ${page}`);
       if (!waitForCompletion) return;
       await waitFor(window, () => {
         const resultArea = window.document.querySelector(`[data-page="${page}"] [data-result-area]`);
@@ -189,7 +246,7 @@ async function bootPreview({ fetchMap }) {
         await flush(window);
       }
       if (startBtn) startBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-      await waitFor(window, () => trackedFetch.calls.some((call) => call.url === "/api/evaluate/compare-upload"), `compare upload ${kind}`, 5000);
+      await waitFor(window, () => trackedFetch.calls.some((call) => call.url === "/api/evaluate/compare-upload-task"), `compare upload ${kind}`, 5000);
       await waitFor(window, () => query(`[data-compare-ranking="${kind}"] .ranking-list`).textContent?.length > 0, `compare render ${kind}`, 5000);
     },
   };
