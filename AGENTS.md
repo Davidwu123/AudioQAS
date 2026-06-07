@@ -32,6 +32,13 @@ Use `--with-test` for pytest, Node/npm dependencies, `node_modules`, and Playwri
 - `web-preview-data.js`: business data and display mapping
 - `web-preview-app.js`: DOM state/render/event layer
 
+## Code Reading & Debugging Entry
+
+- For code logic questions, module analysis, call-chain tracing, or bug triage, use the existing `.codegraph/` index first when available.
+- Prefer `codegraph_context`, `codegraph_trace`, `codegraph_callers`, and `codegraph_callees` to locate relevant files, functions, routes, and dependencies before broad manual source searches.
+- Treat codegraph as navigation and hypothesis support; verify final conclusions against the current source files, logs, tests, or reproduction evidence.
+- If `.codegraph/` is missing, stale, or unavailable, fall back to `rg` plus direct source reading.
+
 ## Product Boundaries
 
 - PC browser only
