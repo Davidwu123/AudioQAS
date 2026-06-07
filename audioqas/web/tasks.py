@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections.abc import Callable
 from dataclasses import dataclass
+from threading import Lock
 from typing import Any
 from uuid import uuid4
 
@@ -27,6 +29,10 @@ from audioqas.web.schemas import EvalDomain
 
 logger = get_logger(__name__)
 ProgressCallback = Callable[[dict[str, Any]], None]
+DEFAULT_COMPARE_WORKERS = 4
+MAX_COMPARE_WORKERS = 4
+COMPARE_PROGRESS_BASE = 20
+COMPARE_PROGRESS_SPAN = 75
 
 
 def _emit_progress(callback: ProgressCallback | None, **event: Any) -> None:
@@ -55,8 +61,10 @@ def default_task_runners() -> TaskRunners:
 
 
 class EvaluationService:
-    def __init__(self, runners: TaskRunners | None = None) -> None:
+    def __init__(self, runners: TaskRunners | None = None, compare_workers: int = DEFAULT_COMPARE_WORKERS) -> None:
         self._runners = runners or default_task_runners()
+        self._owns_default_runners = runners is None
+        self._compare_workers = max(1, min(MAX_COMPARE_WORKERS, int(compare_workers)))
         self._preprocess_settings = {
             "resample": True,
             "to_mono": True,
@@ -84,6 +92,14 @@ class EvaluationService:
         if model_key not in catalog:
             raise KeyError(f"Unknown model '{model_key}' for domain '{domain.value}'")
         return catalog[model_key]
+
+    def _worker_service(self) -> "EvaluationService":
+        service = EvaluationService(
+            None if self._owns_default_runners else self._runners,
+            compare_workers=1,
+        )
+        service._preprocess_settings = dict(self._preprocess_settings)
+        return service
 
     @staticmethod
     def _primary_dimension_score(result: ScoreResult) -> float:
@@ -219,20 +235,52 @@ class EvaluationService:
         progress_callback: ProgressCallback | None = None,
     ) -> CompareTaskResult:
         total_groups = len(groups)
-        per_group_span = 75 / max(total_groups, 1)
-        single_results = [
-            (group, self.evaluate_single(
-                domain=domain,
-                model_key=model_key,
-                file_path=group.file_path,
-                include_signal=include_signal,
-                progress_callback=progress_callback,
-                progress_prefix=f"{group.key} 文件",
-                progress_base=20 + round(index * per_group_span),
-                progress_span=round(per_group_span),
-            ))
-            for index, group in enumerate(groups)
-        ]
+        if total_groups == 0:
+            single_results = []
+        else:
+            aggregator = _CompareProgressAggregator(
+                groups=[group.key for group in groups],
+                callback=progress_callback,
+                base=COMPARE_PROGRESS_BASE,
+                span=COMPARE_PROGRESS_SPAN,
+            )
+            workers = min(self._compare_workers, total_groups, MAX_COMPARE_WORKERS)
+            indexed_results: list[tuple[CompareInputGroup, SingleTaskResult] | None] = [None] * total_groups
+            with set_event("compare_parallel_started"):
+                logger.info(
+                    "compare_parallel_started model=%s groups=%s workers=%s max_workers=%s",
+                    model_key,
+                    total_groups,
+                    workers,
+                    MAX_COMPARE_WORKERS,
+                )
+
+            def evaluate_group(index: int, group: CompareInputGroup) -> tuple[int, CompareInputGroup, SingleTaskResult]:
+                service = self._worker_service()
+                result = service.evaluate_single(
+                    domain=domain,
+                    model_key=model_key,
+                    file_path=group.file_path,
+                    include_signal=include_signal,
+                    progress_callback=aggregator.callback_for(group.key),
+                    progress_prefix=f"{group.key} 文件",
+                    progress_base=0,
+                    progress_span=100,
+                )
+                return index, group, result
+
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="audioqas-compare") as executor:
+                futures = [
+                    executor.submit(evaluate_group, index, group)
+                    for index, group in enumerate(groups)
+                ]
+                for future in as_completed(futures):
+                    index, group, result = future.result()
+                    indexed_results[index] = (group, result)
+
+            single_results = [item for item in indexed_results if item is not None]
+            with set_event("compare_parallel_finished"):
+                logger.info("compare_parallel_finished model=%s groups=%s workers=%s", model_key, total_groups, workers)
 
         sorted_results = sorted(
             single_results,
@@ -265,3 +313,46 @@ class EvaluationService:
             base_key=resolved_base,
             items=items,
         )
+
+
+class _CompareProgressAggregator:
+    _STAGE_WEIGHTS = {
+        "preprocess_started": 0,
+        "model_started": 0,
+        "model_finished": 1,
+        "signal_started": 1,
+        "signal_finished": 2,
+        "finished": 3,
+    }
+
+    def __init__(self, *, groups: list[str], callback: ProgressCallback | None, base: int, span: int) -> None:
+        self._groups = groups
+        self._callback = callback
+        self._base = base
+        self._span = span
+        self._lock = Lock()
+        self._weights = {group: 0 for group in groups}
+        self._last_percent = base
+
+    def callback_for(self, group_key: str) -> ProgressCallback | None:
+        if self._callback is None:
+            return None
+
+        def callback(event: dict[str, Any]) -> None:
+            with self._lock:
+                current = self._weights[group_key]
+                incoming = self._STAGE_WEIGHTS.get(str(event.get("stage")), current)
+                self._weights[group_key] = max(current, incoming)
+                total = max(len(self._groups), 1) * 3
+                percent = self._base + round(self._span * sum(self._weights.values()) / total)
+                percent = max(self._last_percent, min(self._base + self._span, percent))
+                self._last_percent = percent
+                finished = sum(1 for value in self._weights.values() if value >= 3)
+                forwarded = {
+                    **event,
+                    "percent": percent,
+                    "label": f"{event.get('label', group_key)} · {finished}/{len(self._groups)} 文件完成",
+                }
+            self._callback(forwarded)
+
+        return callback

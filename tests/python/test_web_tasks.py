@@ -1,3 +1,6 @@
+from threading import Barrier, Lock
+import time
+
 from audioqas.web.runtime import SingleTaskResult
 from audioqas.web.runtime import CompareInputGroup
 from audioqas.web.schemas import EvalDomain
@@ -51,6 +54,36 @@ class FakeSignalRunner:
             "preprocessed": False,
             "preprocessed_path": audio_path,
         }
+
+
+class BlockingModelRunner(FakeModelRunner):
+    def __init__(self, model_name: str, barrier: Barrier) -> None:
+        super().__init__(model_name)
+        self._barrier = barrier
+
+    def score(self, audio_path: str):
+        self._barrier.wait(timeout=2)
+        return super().score(audio_path)
+
+
+class CountingModelRunner(FakeModelRunner):
+    def __init__(self, model_name: str, delay: float = 0.05) -> None:
+        super().__init__(model_name)
+        self._delay = delay
+        self._lock = Lock()
+        self.active = 0
+        self.peak = 0
+
+    def score(self, audio_path: str):
+        with self._lock:
+            self.active += 1
+            self.peak = max(self.peak, self.active)
+        try:
+            time.sleep(self._delay)
+            return super().score(audio_path)
+        finally:
+            with self._lock:
+                self.active -= 1
 
 
 def make_service() -> EvaluationService:
@@ -159,6 +192,79 @@ def test_evaluate_compare_returns_rank_and_delta():
     item_b = next(item for item in result.items if item.key == "B")
     assert item_b.rank >= 1
     assert item_b.delta_from_base is not None
+
+
+def test_evaluate_compare_runs_files_concurrently_by_default():
+    runner = BlockingModelRunner("DNSMOS", Barrier(3))
+    service = EvaluationService(
+        TaskRunners(
+            speech_models={"dnsmos": runner},
+            mixed_models={},
+            signal_runner=FakeSignalRunner(),
+        )
+    )
+
+    result = service.evaluate_compare(
+        domain=EvalDomain.SPEECH,
+        model_key="dnsmos",
+        groups=[
+            CompareInputGroup(key="A", file_path="a.wav"),
+            CompareInputGroup(key="B", file_path="b.wav"),
+            CompareInputGroup(key="C", file_path="c.wav"),
+        ],
+        include_signal=False,
+    )
+
+    assert [item.key for item in result.items] == ["A", "B", "C"]
+
+
+def test_evaluate_compare_caps_parallel_workers_at_four():
+    runner = CountingModelRunner("DNSMOS")
+    service = EvaluationService(
+        TaskRunners(
+            speech_models={"dnsmos": runner},
+            mixed_models={},
+            signal_runner=FakeSignalRunner(),
+        )
+    )
+
+    result = service.evaluate_compare(
+        domain=EvalDomain.SPEECH,
+        model_key="dnsmos",
+        groups=[
+            CompareInputGroup(key="A", file_path="a.wav"),
+            CompareInputGroup(key="B", file_path="b.wav"),
+            CompareInputGroup(key="C", file_path="c.wav"),
+            CompareInputGroup(key="D", file_path="d.wav"),
+            CompareInputGroup(key="E", file_path="e.wav"),
+            CompareInputGroup(key="F", file_path="f.wav"),
+        ],
+        include_signal=False,
+    )
+
+    assert len(result.items) == 6
+    assert runner.peak == 4
+
+
+def test_evaluate_compare_progress_percent_is_monotonic_when_events_are_out_of_order():
+    service = make_service()
+    events = []
+
+    service.evaluate_compare(
+        domain=EvalDomain.SPEECH,
+        model_key="dnsmos",
+        groups=[
+            CompareInputGroup(key="A", file_path="a.wav"),
+            CompareInputGroup(key="B", file_path="b.wav"),
+            CompareInputGroup(key="C", file_path="c.wav"),
+        ],
+        include_signal=True,
+        progress_callback=lambda event: events.append(event),
+    )
+
+    percents = [event["percent"] for event in events]
+    assert percents == sorted(percents)
+    assert percents[-1] <= 95
 
 
 def test_evaluate_single_logs_task_events(tmp_path):

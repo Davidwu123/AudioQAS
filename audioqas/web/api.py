@@ -208,7 +208,7 @@ def create_app(
     history_store=None,
     settings_store=None,
 ) -> FastAPI:
-    app = FastAPI(title="AudioQAS Web API", version="0.1.0")
+    app = FastAPI(title="AudioQAS Web API", version="0.1.1")
     history_store = history_store or default_history_store()
     settings_store = settings_store or default_settings_store()
     preview_service = service or WebPreviewService(history_store=history_store, settings_store=settings_store)

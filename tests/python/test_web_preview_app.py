@@ -37,7 +37,7 @@ def test_web_preview_html_references_external_app_script():
 
 def test_web_preview_header_version_matches_project_version():
     html = HTML_PATH.read_text(encoding="utf-8")
-    assert '<div class="header-version">v0.1.0</div>' in html
+    assert '<div class="header-version">v0.1.1</div>' in html
     assert "v0.2 preview" not in html
 
 
