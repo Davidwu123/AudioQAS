@@ -17,6 +17,12 @@
 
 ---
 
+## Documentation
+
+- [用户使用文档](docs/web-user-guide.md)
+
+---
+
 ## Get Started
 
 Requirements for the normal runtime:
